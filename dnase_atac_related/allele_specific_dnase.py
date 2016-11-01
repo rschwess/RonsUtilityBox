@@ -1,6 +1,17 @@
 """
 Extract DNase/ATAC reads over specific SNPs, filter them and test for
 significantly allele specific signals
+
+#Note: Sorry, this is my first python script, switching from perl and I'm aware
+that it comes across as the nested hashes of death implementation :)
+"""
+
+
+
+"""
+TODO: Remove re ref basing only clculate relative to the selected reference and variant base
+check weird unsorted 1.0 values
+implement report 'all' / vs / 'valid' / 'significant'
 """
 
 # import stuff
@@ -26,7 +37,23 @@ def isNumber(s):
         return False
 
 # Define arguments and description ---------------------------------------------
-parser = argparse.ArgumentParser(description='Calculate DNase-seq/ATAC-seq allelic biases from reads over given SNPs.')
+parser = argparse.ArgumentParser(description="""
+##############################################################################\n
+  Calculate DNase-seq/ATAC-seq allelic biases from reads over given SNPs.  \n
+##############################################################################\n
+\n
+Input is a SNP file in bed-like or vcf format and one or multiple bam files.
+The script will extract reads over all supplied bam files, so make sure they are homogeneous in terms of data type and individual sequenced
+(e.g. only pool DNase and ATAC-seq eperiments from the same individual).\n
+Reads passing the quality filter with the selected criteria will be piled-up and the
+allele freuqnecies over each specified SNP position is recorded.\n
+A two-sided binomial test is performed to test for significant differences in the
+allele frequencies. Reference and variant base have to be specifed within the SNP file.
+The test is performed relative to the specified reference base.\n
+The specified alternative base results are reported and every other passing allele is tested and reported separatly.\n
+Finally an FDR (Benjamini-Hochberg) if performed to calculate adjusted P-values.\n\n\n
+Requires: python3, pysam, scipy, statsmodels
+""")
 parser.add_argument('-s', '--snps',
                     metavar='<snp.file>',
                     type=str,
@@ -43,28 +70,23 @@ parser.add_argument('-b', '--bam',
 parser.add_argument('--max_missmatches',
                     metavar='M',
                     type=int,
-                    nargs=1,
                     default=2,
                     help='Number of missmatches per read allowed. Reads with more missmatches will be filtered. Default: 2')
-
 parser.add_argument('--min_mapq',
                     metavar='Q',
                     type=int,
-                    nargs=1,
                     default=0,
                     help='Minimum mapping quality at the SNP position for a read to be considered. Default: 0')
 
 parser.add_argument('--min_reads',
                     metavar='R',
                     type=int,
-                    nargs=1,
                     default=10,
                     help='Minimum number of valid reads per SNP required to test it for allelic imbalance. Default: 10')
 
 parser.add_argument('-f', '--format',
                     metavar='bed',
                     type=str,
-                    nargs=1,
                     default='bed',
                     choices=('bed', 'vcf'),
                     help='Format of the snp file. [bed or vcf] with default: bed')
@@ -72,20 +94,17 @@ parser.add_argument('-f', '--format',
 parser.add_argument('--refcol',
                     metavar='N',
                     type=int,
-                    nargs=1,
                     help='Column where to find the reference base. Default for VCF format is 4 and for bed format 5.')
 
 parser.add_argument('--altcol',
                     metavar='N',
                     type=int,
-                    nargs=1,
                     help='Column where to find the alternative base. Default for VCF format is 5 and for bed format 6.')
 
 parser.add_argument('--sortby',
                     metavar='<pvalue/position>',
-                    type=str,
-                    nargs=1,
                     default='pvalue',
+                    choices=('pvalue', 'position'),
                     help='Select if to sort the output by pvalue or chromosomal position. [Default: pvalue]')
 
 
@@ -143,12 +162,12 @@ snp_dict = {}   # intialise an empty dict to store snp info per ID
 indel_count = 0
 not_queried_count = 0  # count for non tested SNPs
 
+
 # 1) Get & format SNP input as dict --------------------------------------------
 # read input save SNP positions in snp_dict
 with open(input_snp_file, "r") as sfh:
 
     # check file format [PLACEHOLDER]
-
     for line in sfh:
 
         if re.match('^#', line):  # skip comment and header lines
@@ -176,6 +195,7 @@ with open(input_snp_file, "r") as sfh:
                 'ref': line_split[ref_col],
                 'alt': line_split[alt_col]
             }
+
 
 # 2) Extract and filter reads over SNP positions -------------------------------
 for input_bamfile in args.bam:
@@ -259,7 +279,7 @@ for key in snp_dict:
             else:
                 snp_dict[key]['allelic_dict'][base_snp] = {'count': 1}
 
-    # 5) Test fo allelic imbalance -------------------------------------------------
+# 4) Test fo allelic imbalance -------------------------------------------------
         ref_allele_count = 0  # initialise temp variables
         ref_allele_base = snp_dict[key]['ref']  # base to calc the binom test relative to
         # check if reference genome base is present in the reads counts
@@ -278,21 +298,27 @@ for key in snp_dict:
             snp_dict[key]['report_ref'] = snp_dict[key]['ref'] + ':0'
             if ref_allele_base != snp_dict[key]['ref']:  # found an substitute ref base to use
                 snp_dict[key]['report_ref'] = snp_dict[key]['report_ref'] + ';' + ref_allele_base + ':' + str(ref_allele_count)
-            # and flag that no reads for the designated reference base were found
-            snp_dict[key]['report_comment'] = snp_dict[key]['report_comment'] + 'No_Ref_Reads;Calc_rel_to_' + ref_allele_base + ';'
+                # and flag that no reads for the designated reference base were found
+                snp_dict[key]['report_comment'] = snp_dict[key]['report_comment'] + 'No_Ref_Reads;Calc_rel_to_' + ref_allele_base + ';'
 
         # check if no alternative reference base could be found
         # set the comment tag and output strings accordingly
         if ref_allele_base == snp_dict[key]['ref'] and not snp_dict[key]['ref'] in snp_dict[key]['allelic_dict']:
+
+        # no alternative ref base could be found so no tests can be carried out
             if snp_dict[key]['alt'] in snp_dict[key]['allelic_dict']:
                 not_queried_count += 1
                 snp_dict[key]['report_alt'] = snp_dict[key]['alt'] + ':' + str(snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['count']) + ':.'
                 snp_dict[key]['report_comment'] = snp_dict[key]['report_comment'] + 'Only_Alt_Reads;'
+                snp_dict[key]['flag_sufficient_reads'] = False
             else:
                 not_queried_count += 1
                 snp_dict[key]['report_alt'] = '.:.:.'
                 snp_dict[key]['report_comment'] = snp_dict[key]['report_comment'] + 'No_Ref_nor_Alt_Reads;'
+                snp_dict[key]['flag_sufficient_reads'] = False
+
             snp_dict[key]['report_other'] = '.:.:.'
+
         else:
             # test for allelic imbalance with every present base relative to the ref base
             # check if only one none zero base is present and skip and report if so
@@ -315,7 +341,7 @@ for key in snp_dict:
         not_queried_count += 1
         snp_dict[key]['report_comment'] = snp_dict[key]['report_comment'] + 'No_Alt_Reads;'
         snp_dict[key]['report_alt'] = snp_dict[key]['alt'] + ':0:.'
-    else:
+    elif not len(snp_dict[key]['allelic_dict']) <= 1:  # check if only Alt reads were found
         snp_dict[key]['report_alt'] = snp_dict[key]['alt'] + ':' + str(snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['count']) + ':' + str(snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['pvalue'])
 
     # assemble other variants test outputs (not refbase and not alt base and not reassigned ref base)
@@ -326,17 +352,28 @@ for key in snp_dict:
     # Delete Dict reads entries for memory release
     del snp_dict[key]['reads']
 
-# 6) FDR -----------------------------------------------------------------------
-# apply FDR correction only to the pvalues of SNPS matching the referene and alternative bases
-# 6.1) Fetch all valid/queried SNPs and pvalues
+
+# 5) FDR -----------------------------------------------------------------------
+"""
+Apply FDR correction only to the P-values of SNPs matching the reference and
+alternative bases, where pvalues where calulated successfully
+"""
+# 5.1) Fetch all valid/queried SNPs and pvalues
 valid_tests_dict = {}
 for key in snp_dict:
-    # dont use uf insufficient reads, pvalue is not a valid number ref base is
+    # dont use if insufficient reads, or no alt reads have been found
+    # test only the requested base
+    # or if pvalue is not a valid number ref base is
     # not the designated ref base and no other weird stuff in comment section happening
-    if snp_dict[key]['flag_sufficient_reads'] and isNumber(snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['pvalue']) and snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['count'] > 0 and snp_dict[key]['report_comment'] == '':
-        valid_tests_dict.update({key: {'pvalue': snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['pvalue']}})
+    if snp_dict[key]['flag_sufficient_reads'] and snp_dict[key]['alt'] in snp_dict[key]['allelic_dict']:
+        if(
+                isNumber(snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['pvalue']) and
+                snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['count'] > 0 and
+                snp_dict[key]['report_comment'] == ''
+        ):
+            valid_tests_dict.update({key: {'pvalue': snp_dict[key]['allelic_dict'][snp_dict[key]['alt']]['pvalue']}})
 
-# 6.2) Perform FDR
+# 5.2) Perform FDR
 fdr_pvalues = []
 fdr_keys = []
 for key in valid_tests_dict:
@@ -350,20 +387,20 @@ fdr_qvalues = smm.multipletests(fdr_pvalues, alpha=0.05, method='fdr_bh')[1] # c
 for i in range(len(fdr_keys)):
     valid_tests_dict[fdr_keys[i]]['qvalue'] = fdr_qvalues[i]
 
-# Report What got tested
+# Assemble report what got tested
 total_count = len(snp_dict)
 queried_count = total_count - not_queried_count
 valid_pvalue_count = len(valid_tests_dict)  # get number of valid pvalues
-print('# Total SNPs: %s  Queried: %s  Not Queried: %s' % (total_count, queried_count, not_queried_count))
 
-# 7) Assemble and Print Output -------------------------------------------------
+
+# 6) Assemble and Print Output -------------------------------------------------
 # SORT
 # Order keys according to desired output:
 sorted_keys = []
 sort_keys = []
 sort_values = []
 
-if args.sortby[0] == 'pvalue':
+if args.sortby == 'pvalue':
     # get keys p values from snp_dict
     for k in snp_dict:
         sort_keys.append(k)
@@ -374,7 +411,7 @@ if args.sortby[0] == 'pvalue':
     # sort
     sorted_keys = [x for (y,x) in sorted(zip(sort_values, sort_keys))]
 
-elif args.sortby[0] == 'position':
+elif args.sortby == 'position':
     # get chr and pos arguments, trim the chr from chr prior to sorting
     for k in snp_dict:
         temp_chr = snp_dict[k]['chr']
@@ -394,7 +431,12 @@ elif args.sortby[0] == 'position':
     for s in sort_values:
         sorted_keys.append(s[2])
 
-# PRINT
+################################################################################
+####                                PRINT                                  #####
+################################################################################
+
+# print('# Total SNPs: %s  Queried: %s  Not Queried: %s' % (total_count, queried_count, not_queried_count))
+
 for key in sorted_keys:
     # produce output string
     # bed format
@@ -414,6 +456,5 @@ for key in sorted_keys:
         output += '.'
     else:
         output += snp_dict[key]['report_comment']
-
-    # PRINT
+    # PRINT LINE
     print(output)
