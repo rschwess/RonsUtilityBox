@@ -79,11 +79,11 @@ parser.add_argument('--max_missmatches',
                     help="""Number of missmatches per read allowed.
                     Reads with more missmatches will be filtered. Default: 2""")
 
-parser.add_argument('--min_mapq',
+parser.add_argument('--min_baseq',
                     metavar='Q',
                     type=int,
-                    default=0,
-                    help="""Minimum mapping quality at the SNP position for a
+                    default=15,
+                    help="""Minimum base quality at the SNP position for a
                      read to be considered. Default: 0""")
 
 parser.add_argument('--min_reads',
@@ -147,7 +147,7 @@ for bam_file in args.bam:
 # Filter Parameters
 SNP_FORMAT = args.format
 MAX_MISSMATCHES_PER_READ = args.max_missmatches
-MIN_MAPPING_QUAL_AT_SNP = args.min_mapq
+MIN_BASE_QUAL_AT_SNP = args.min_baseq
 MIN_READS_AT_SNP = args.min_reads
 
 # significance level threshold (FDR/q-value) to apply if report == sginificant
@@ -246,11 +246,12 @@ for input_bamfile in args.bam:
                 continue  # skip reads with to many missmatches
 
             # Filter.2) Filter for Mapping quality at SNP position
-            base_mapqs = read.query_alignment_qualities
+            base_quals = read.query_alignment_qualities
+
             # get the relative position of the snp for that read while
             # correcting back to 0-based coord
             temp_pos = snp_dict[key]['pos'] - read.reference_start
-            if base_mapqs[temp_pos] < MIN_MAPPING_QUAL_AT_SNP:
+            if base_quals[temp_pos] < MIN_BASE_QUAL_AT_SNP:
                 continue  # skip reads with poor mapq at SNP position
 
             # append filter passing reads to temp_list
