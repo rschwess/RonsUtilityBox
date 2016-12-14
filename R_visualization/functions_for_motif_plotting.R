@@ -30,6 +30,22 @@ motif_theme <- theme(
   strip.background = element_blank()
 )
 
+# theme for aligned matching sequence plotting
+seq_theme <- theme(
+  panel.grid = element_blank(),
+  axis.title.x = element_blank(),
+  axis.title.y = element_text(angle=0, hjust=.6),
+  axis.line = element_blank(),
+  axis.ticks = element_blank(),
+  axis.text = element_blank(),
+  plot.margin = unit(c(0,-2, 0, -2), "lines"),
+  panel.border=element_blank(),
+  strip.background = element_blank(),
+  legend.position = "none"
+)
+
+letter.colours <- brewer.pal(5, "Set1")[c(3,2,5,1,4)]
+
 # FUNCTIONS -------------------------------------------------------------------
 circleFun <- function(center = c(0,0), diameter = 1, npoints = 100){
   # circle plotting helper function modified from "joran" (stackoverflow)
@@ -57,8 +73,6 @@ plotBitBase <- function(letter, scale=1, xintercept=0, yintercept=0){
     warning(paste0(letter, " is not a valid base letter!"))
     return(NA_real_)
   }
-  
-  letter.colours <- brewer.pal(5, "Set1")[c(3,2,5,1)]
   
   # A
   if(letter == "A"){
@@ -176,8 +190,7 @@ plotICM <- function(icm){
   
   # lay plot base
   p <- ggplot(data.frame(x=factor(c(0:ncol(icm)), levels=c(0:ncol(icm))), y=c(0, max(temp.df$to))), aes(x=x, y=y)) + 
-    labs(x="pos", y="bits") +
-    xlim(.5, nrow(temp.df)/4+.5) +  ylim(0,2) + theme_bw() + motif_theme 
+    labs(x="pos", y="bits") + xlim(.5, nrow(temp.df)/4+.5) + ylim(0,2) + theme_bw() + motif_theme 
   
   # add base letters using the position as xintercept, the bit content as scale 
   # and the summed up bit content of the lower letters as yintercept
@@ -186,3 +199,170 @@ plotICM <- function(icm){
   }
   return(p)
 }
+
+plotAlignedSeq <- function(seq, id="", with.variant=FALSE, variant.base="N", variant.pos=0){
+  # Function to plot a matching/aligned sequence (with variant) to combine/plot under a sequence motif
+  # Input:
+  #   seq: character string - sequence input
+  #   id: CHAR string to label the sequence/variant
+  #   with.variant: TRUE/FALSE - select if to plot with or without a vairant base
+  #   variant.base: variant base [A,C,G,T,X] use "X" for deletions
+  #   variant.pos: INT position of the variant base
+  # Returns: ggplot2 object of plotted/aligned sequence (e.g. use with cowplot::plot_grid for aligned combination of plots)
+  
+  # make sequence df
+  temp.df <- data.frame(
+    pos=c(1:nchar(seq)),
+    base=factor(unlist(strsplit(seq, "")), levels=c("A", "C", "G", "T")),
+    height=rep(1, nchar(seq))
+  )
+  
+  if(with.variant){
+    # make  SNP df
+    temp.snp.df <- data.frame(
+      pos = variant.pos,
+      base = variant.base,
+      height= .85
+    )
+  }
+  # make plot
+  q <- ggplot(temp.df, aes(y=height, x=pos, label=base, fill=base)) + 
+    geom_label(size=6) + 
+    ylab(id) + 
+    seq_theme + 
+    xlim(.5, nchar(seq)+.5) +
+    scale_fill_manual(values = letter.colours)  
+  
+  # add variant if specified
+  if(with.variant){
+    q <- q + geom_label(data=temp.snp.df, aes(y=height, x=pos, label=base), size=5.5) + 
+      ylim(.75, 1.1)
+  }else{
+    q <- q + ylim(.9, 1.1) #set no variant ranges
+  }
+  return(q)
+}
+
+# HELPER FUNCTIONS ------------------------------------------------------------
+reverseBase <- function(b){
+  r <- b
+  # helper function to reverser base
+  if(b == "A"){
+    r <- "T"
+  }else if(b == "C"){
+    r <- "G" 
+  }else if(b == "G"){
+    r <- "C" 
+  }else if(b == "T"){
+    r <- "A"
+  }
+  return(r)
+}
+
+# SANDBOX FUNCTIONS -----------------------------------------------------------
+plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pwm, icm, bsgenome, min.score){
+  # Wrapper funtion: make a cowplo t combined version for single SNPs of interest
+  # Requires Biostrings, the respective bsgenome, TFBSTools, ggplot2, cowplot, RColorBrewer
+  # Input:
+  #   chr: CHAR chromosome
+  #   pos: INT  1-based position in genome
+  #   id: CHAR rsID or similar to label the variant
+  #   ref.base: CHAR single base reference
+  #   alt.base: CHAR single base alternative base
+  #   extend: INT number of base pairs around variant to extend the sequence and scan pwm against
+  #   pwm: TFBSTools PWM object
+  #   icm: TFBSTool ICM object
+  #   bsgenome: biostrings BSGenome to retrieve the reference sequence from
+  #   min.score: REAL/PERCETNAGE minimum relative score a PWM match has to achieve to be reported
+  # Returns: cowplot combining the motif plot and aligned sequnces with variant plots
+  
+  require(Biostrings)
+  require(TFBSTools)
+  require(ggplot2)
+  require(RColorBrewer)
+  require(cowplot)
+  
+  # placeholder to check input
+  
+  # 0) make the icm plot
+  icm.plot <- plotICM(icm.matrix) # plot icm as part of later plots
+  
+  # 1) get longer surrounding sequence
+  ref.seq <- as.character(getSeq(bsgenome, as.character(chr), start=as.numeric(pos)-extend, end=as.numeric(pos)+extend))
+  # 2) make alternative sequence with alt.base
+  alt.seq <- ref.seq
+  temp.base <- substring(alt.seq, extend+1, extend+1)  # check if middle equals ref base
+  if(temp.base != ref.base){
+    print(paste0("Warning ... ", id, "'s major ref base not in reference genome"))
+    if(temp.base == alt.base){
+      print("Reference base matches the alt.base ... substituting ...")
+      substring(alt.seq, extend+1, extend+1) <- as.character(ref.base)
+      alt.base <- ref.base
+      ref.base <- temp.base
+    }else{
+      return(NA_character_)
+    }
+  }else{
+    substring(alt.seq, extend+1, extend+1) <- as.character(alt.base)  # substitute for alternative base
+  }
+  
+  # 3) match sequence against motif
+  motif.match <- searchSeq(pwm, ref.seq, seqname="seq1", min.score=min.score, strand="*")
+  # for each match
+  num.matches <- length(motif.match@views) # get number of matches
+  seq.plot.list <- list() # init list
+  seq.plot.list[[1]] <- icm.plot
+  
+  # 4) make sequence aligned plot parts for every matching sequence
+  if(num.matches == 0){
+    # what to do when no matches found
+    warnings("No PWM matches to sequence above threshold!")
+    return(NA_character_)
+  }else{
+    for(i in c(1:num.matches)){
+      # selected  scoring matches top score down
+      j <- order(motif.match@score, decreasing=TRUE)[i]
+      
+      match.offset <- min(motif.match@views@ranges[j])  # get offset
+      match.strand <- motif.match@strand[j]  # get strand
+      temp.var <- alt.base
+      if(match.strand == "-"){
+        match.seq <- as.character(reverseComplement(motif.match@views[[j]]))
+        temp.var <- reverseBase(temp.var)
+        match.offset <- max(motif.match@views@ranges[j])  # get offset
+        match.offset <- match.offset - extend
+      }else{
+        match.seq <- as.character(motif.match@views[[j]])  # get sequence part according to strand info 
+        match.offset <- min(motif.match@views@ranges[j])  # get offset
+        match.offset <- extend + 1 - match.offset + 1
+      }
+      # check if variant is within the matching sequence
+      variant.in.match <- TRUE
+      if((match.offset > extend + 1) | (match.offset + ncol(factor.icm) < extend + 1)){
+        variant.in.match <- FALSE
+      }
+      match.seq.plot <- plotAlignedSeq(
+        seq=match.seq, 
+        id=paste0(id, ".",i," ", match.strand), 
+        with.variant = variant.in.match, 
+        variant.base = temp.var, 
+        variant.pos = match.offset)
+      seq.plot.list[[i+1]] <- match.seq.plot
+    }
+  }
+  
+  # make the combined plot
+  combined.plot <- do.call(
+    plot_grid, c(
+      seq.plot.list, list(
+        nrow=length(seq.plot.list),
+        align="v",
+        rel_heights=c(2.5, rep(1, length(seq.plot.list)-1))
+        )
+      )
+    )
+  
+  return(combined.plot)
+  
+}
+
