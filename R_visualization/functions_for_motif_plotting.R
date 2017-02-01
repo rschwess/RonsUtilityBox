@@ -14,8 +14,8 @@
 # * don't tell Hadley ;)
 
 # required
-require(ggplot2)
-require(RColorBrewer)
+require(ggplot2, quietly = TRUE)
+require(RColorBrewer, quietly = TRUE)
 
 # THEME -----------------------------------------------------------------------
 motif_theme <- theme(
@@ -189,7 +189,7 @@ plotICM <- function(icm){
   ) # convert to dataframe
   
   # lay plot base
-  p <- ggplot(data.frame(x=factor(c(0:ncol(icm)), levels=c(0:ncol(icm))), y=c(0, max(temp.df$to))), aes(x=x, y=y)) + 
+  p <- ggplot(data.frame(x=factor(c(0,ncol(icm)), levels=c(0,ncol(icm))), y=c(0, max(temp.df$to))), aes(x=x, y=y)) + 
     labs(x="pos", y="bits") + xlim(.5, nrow(temp.df)/4+.5) + ylim(0,2) + theme_bw() + motif_theme 
   
   # add base letters using the position as xintercept, the bit content as scale 
@@ -284,6 +284,9 @@ plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pw
   
   # placeholder to check input
   
+  # init empty vector of potential var/alt positions 
+  position.var <- c()
+  
   # 0) make the icm plot
   icm.plot <- plotICM(icm.matrix) # plot icm as part of later plots
   
@@ -348,6 +351,8 @@ plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pw
         variant.base = temp.var, 
         variant.pos = match.offset)
       seq.plot.list[[i+1]] <- match.seq.plot
+      
+      position.var <- c(position.var, match.offset)  # save potential var position
     }
   }
   
@@ -362,7 +367,64 @@ plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pw
       )
     )
   
-  return(combined.plot)
+  # report plot and relative variant positions
+  return(list(plot=combined.plot, position.var=position.var))
   
 }
 
+plotWeights <- function(w){
+  # Plot function to generate a polygon based base letter representation of a kernel weight matrix of shape 4(bases)*X
+  # Input:
+  #   w: 4 * X dataframe (rows: A, C, G, T, columns: as many positions as there are in the kernel)
+  # Returns: ggplot2 object with the motif plot
+
+  # space for icm data frame checking
+  if(nrow(w) != 4){
+    warnings("Must be a 4 row (A,C,G,T) data frame")
+    return(NA_character_)
+  }
+
+  # convert data frame to data frame listing the weight content of letters stagged on top or below one another
+  stagged.w <- apply(w, 2, function(x){
+    temp <- data.frame(from=rep(0,4), to=rep(0,4)) # init from_to table
+    row.names(temp) <- c("A", "C", "G", "T")
+    ordered <- order(x) # order entries
+    pos.cum <- 0 # init cumulative value
+    neg.cum <- 0 # init cumulative value
+    # run over bases and count up cum and set from to values for plot
+    for(i in c(1:4)){
+      if(x[ordered[i]] >= 0){
+        temp[ordered[i], "from"] <- pos.cum
+        pos.cum <- pos.cum + x[ordered[i]]
+        temp[ordered[i], "to"] <- pos.cum  
+      }else if(x[ordered[i]] < 0){
+        temp[ordered[i], "to"] <- neg.cum
+        neg.cum <- neg.cum + x[ordered[i]]
+        temp[ordered[i], "from"] <- neg.cum  
+      }
+    }
+    temp <- unlist(temp)
+    return(temp)
+  })
+  # Convert those to a from - to plot valued, long dataframe for ggplot2
+  stagged.w <- t(stagged.w)
+  temp.df <- data.frame(
+    pos=rep(c(1:ncol(w)), times=4),
+    base=rep(c("A", "C", "G", "T"), each=ncol(w)),
+    from=c(stagged.w[,"from1"], stagged.w[,"from2"], stagged.w[,"from3"], stagged.w[,"from4"]),
+    to=c(stagged.w[,"to1"], stagged.w[,"to2"], stagged.w[,"to3"], stagged.w[,"to4"])
+  ) # convert to dataframe
+
+  # lay plot base
+  p <- ggplot(data.frame(x=factor(c(0,ncol(w)), levels=c(0,ncol(w))), y=c(0, max(temp.df$to))), aes(x=x, y=y)) +
+    geom_hline(yintercept=0) +
+    labs(x="pos", y="weight") + xlim(.5, nrow(temp.df)/4+.5) + ylim(-1,1) + 
+    theme_bw() + motif_theme
+
+  # add base letters using the position as xintercept, the bit content as scale
+  # and the summed up bit content of the lower letters as yintercept
+  for(i in c(1:nrow(temp.df))){
+    p <- p + plotBitBase(temp.df$base[i], xintercept = temp.df$pos[i]-1+.5, yintercept = temp.df$from[i], scale= temp.df$to[i] - temp.df$from[i])
+  }
+  return(p)
+}
