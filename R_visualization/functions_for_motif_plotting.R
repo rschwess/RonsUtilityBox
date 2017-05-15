@@ -418,7 +418,7 @@ plotWeights <- function(w){
   # lay plot base
   p <- ggplot(data.frame(x=factor(c(0,ncol(w)), levels=c(0,ncol(w))), y=c(0, max(temp.df$to))), aes(x=x, y=y)) +
     geom_hline(yintercept=0) +
-    labs(x="pos", y="weight") + xlim(.5, nrow(temp.df)/4+.5) + ylim(-1,1) + 
+    labs(x="pos", y="weight") + xlim(.5, nrow(temp.df)/4+.5) + #ylim(-1,1) + 
     theme_bw() + motif_theme
 
   # add base letters using the position as xintercept, the bit content as scale

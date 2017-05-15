@@ -188,7 +188,7 @@ snp_dict = {}   # intialise an empty dict to store snp info per ID
 # init some count variables for run stats
 indel_count = 0
 
-# 1) Get & format SNP input as dict --------------------------------------
+# 1) Get & format SNP nnput as dict --------------------------------------
 # read input save SNP positions in snp_dict
 with open(input_snp_file, "r") as sfh:
 

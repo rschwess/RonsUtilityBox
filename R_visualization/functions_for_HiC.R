@@ -18,8 +18,7 @@ science_theme <- theme(
   text = element_text(size = 14, family="Arial"),
   axis.line = element_line(color="black", size = 0.7),
   axis.line.x = element_line(color="black", size = 0.7),
-  axis.line.y = element_line(color="black", size = 0.7),
-  plot.margin = unit(c(0.7,0.7,0.7,0.7), "lines")
+  axis.line.y = element_line(color="black", size = 0.7)
 )
 
 # define themes for metling plots
@@ -27,8 +26,7 @@ melting_theme_hic <- theme(
   axis.text=element_blank(),
   axis.ticks=element_blank(),
   axis.line = element_blank(),
-  panel.border=element_blank(),
-  plot.margin = unit(c(1,1,0,1), "lines")
+  panel.border=element_blank()
 )
 
 melting_theme_signal <- theme(
@@ -36,12 +34,11 @@ melting_theme_signal <- theme(
   axis.title.x=element_blank(),
   axis.ticks.x=element_blank(),
   axis.line.x=element_blank(),
-  panel.border=element_blank(),
-  plot.margin = unit(c(0,1,0,1), "lines")
+  panel.border=element_blank()
 )
 
 melting_theme_signal_bottom <- theme(
-  plot.margin = unit(c(0,1,1,1), "lines")
+  # plot.margin = unit(c(0,1,1,1), "lines")
 )
 
 
@@ -356,7 +353,7 @@ PlotAnnotation <- function(
       axis.ticks.y = element_blank(),
       panel.grid.major = element_blank(),
       panel.border = element_blank(),
-      plot.margin = unit(c(0,1,0,1), "lines")
+      # plot.margin = unit(c(0,1,0,1), "lines")
     )
   
   return(a)
@@ -397,15 +394,17 @@ breaks <- seq(from=min(matrix.df$y), to=max(matrix.df$y), by=step)
 labels <- sapply(breaks, function(x){ FormatBp(x, type=format)}) 
 
 p <- ggplot(data = matrix.df, aes(x=x, y=y, fill=value)) + 
-  geom_tile() + 
+  geom_raster() + 
   scale_x_continuous(breaks=breaks, label=labels) +
   scale_y_reverse(breaks=breaks, label=labels) +
   scale_fill_gradientn(colours=colors) + 
   science_theme + 
   theme(
-    panel.grid = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
     strip.background = element_blank(),
-    axis.title = element_blank()
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
   )
 
 return(p)
@@ -453,10 +452,13 @@ PlotTriangleMatrix <- function(
       science_theme + 
       theme(
         legend.position = c(0.925, 0.75),
-        panel.grid = element_blank(),
         # axis.text.y = element_blank(),
         # axis.ticks.y = element_blank(),
-        axis.title = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # strip.ba = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
         axis.text.x = element_text(angle=45, vjust=0.5),
         strip.background = element_blank()
       )
