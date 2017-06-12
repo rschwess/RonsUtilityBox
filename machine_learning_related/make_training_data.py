@@ -1,7 +1,7 @@
 """
-Convert the raw sequence and the lables to npy arrays for faster batch reading.
-Split data into training, test and validation set.
-Will store a .npz file with the labels and sequences and a coord file per test/valid and train set
+Convert the raw sequence and the lables to hdf5 data/arrays for faster batch reading.
+Split data into training, test and validation set. Save training and test set in same file.
+Will store a .h5 file with the labels and sequences and a coord file per test/valid and train set
 """
 # from __future__ import absolute_import
 # from __future__ import division
@@ -69,28 +69,30 @@ np.random.seed(args.seed)
 print("\nReading lines ...")
 
 # read data in, split into vectors
-lines = open(args.in_file, "r").readlines()
-chroms = []
-start = []
-stop = []
-label = []
-label_tmp = []
-seq = []
-for l in lines:
-    l = l.rstrip()
-    l = l.split("\t")
-    chroms.append(l[0])
-    start.append(l[1])
-    stop.append(l[2])
-    label.append(l[3])
-    label_tmp.append(l[3].split(","))
-    seq.append(l[4])
+with open(args.in_file, "r") as f:
+    chroms = []
+    start = []
+    stop = []
+    label = []
+    label_tmp = []
+    # seq = []
+    for i,l in enumerate(f):
+        l = l.rstrip()
+        l = l.split("\t")
+        chroms.append(l[0])
+        start.append(l[1])
+        stop.append(l[2])
+        label.append(l[3])
+        label_tmp.append(l[3].split(","))
+        # get first sequence to estimate length and format
+        if i == 0:
+            temp_seq = l[4]
+            temp_seq = get_hot_coded_seq(temp_seq)
 
 # Get all lables and sort and assign them to binary labels ---------------------
 label_tmp = [item for sublist in label_tmp for item in sublist]
 label_tmp = np.array(label_tmp)
 unique_labels = np.unique(label_tmp)
-print(unique_labels)
 num_ids = len(unique_labels)  # get number of unique ids
 print("\nNumber of distinct labels found: " + str(num_ids))
 print("\nDistinct labels: " + ' '.join(map(str,unique_labels)))
@@ -125,7 +127,9 @@ if args.split_mode == 'random':
     # sample and get test and valid rows
     tmp_sampled = np.random.choice(input_rows, size=int(to_sample_test+to_sample_valid), replace=False)
     test_rows = tmp_sampled[range(int(to_sample_test))]
+    test_rows = np.sort(test_rows)
     valid_rows = tmp_sampled[range(int(to_sample_test), int(to_sample_test+to_sample_valid))]
+    valid_rows = np.sort(valid_rows)
     # prune remaining training cases
     training_rows = np.delete(input_rows, tmp_sampled)
 
@@ -147,16 +151,18 @@ elif args.split_mode == 'chr':
     print("%s Test cases \n%s Validation cases\n%s Training cases left." %
         (int(len(test_rows)), int(len(valid_rows)), int(len(training_rows))))
 
+print("\nSampled into sets ...")
 # Convert sequences to hot coded numpy array
-print("\nConverting sequences to hot coded representations ...")
-seq_hot = np.empty((len(seq), len(seq[0]), 4), dtype=np.float)
-for i in range(len(seq)):
-    seq_hot[i,:] = get_hot_coded_seq(seq[i])
-del seq
-print(seq_hot.shape)
+# print("\nConverting sequences to hot coded representations ...")
+# seq_hot = np.empty((len(seq), len(seq[0]), 4), dtype=np.float)
+# for i in range(len(seq)):
+#     seq_hot[i,:] = get_hot_coded_seq(seq[i])
+# del seq
+# print(seq_hot.shape)
 
-print("\nStoring ...")
+
 # write training/test/validation set coords ------------------------------------
+print("\nStoring Coordinates ...")
 write_train_coords = open(args.save_prefix + "_training_coords.bed", "w")
 for tr in training_rows:
     write_train_coords.write("%s\t%s\t%s\n" % (chroms[tr], start[tr], stop[tr]))
@@ -167,28 +173,51 @@ write_valid_coords = open(args.save_prefix + "_validation_coords.bed", "w")
 for tr in valid_rows:
     write_valid_coords.write("%s\t%s\t%s\n" % (chroms[tr], start[tr], stop[tr]))
 
-# Save Labels and Sequences in comboned npz file
-# Save Training Labels and Sequences
-training_labels = label_bin[training_rows,]
-training_seqs = seq_hot[training_rows,]
-# Save Test Labels and Sequences
-test_labels = label_bin[test_rows,]
-test_seqs = seq_hot[test_rows,]
+# Initialize training and validation data in hdf5 files ------------------------
+print("\nInitializing hdf5 Storage Files ...")
+# and already store labels
+train_h5f = h5py.File(args.save_prefix + "_training_data.h5", 'w')
+set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
+train_h5f.create_dataset('training_labels', data=label_bin[training_rows,])
+set_test_seq = train_h5f.create_dataset('test_seqs', (test_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
+train_h5f.create_dataset('test_labels', data=label_bin[test_rows,])
+# Validation
+valid_h5f = h5py.File(args.save_prefix + "_validation_data.h5", 'w')
+set_valid_seq = valid_h5f.create_dataset('validation_seqs', (valid_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
+valid_h5f.create_dataset('validation_labels', data=label_bin[valid_rows,])
 
-# save traiing data in hdf5
-h5f = h5py.File(args.save_prefix + "_training_data.h5", 'w')
-h5f.create_dataset('training_seqs', data=training_seqs)
-h5f.create_dataset('training_labels', data=training_labels)
-h5f.create_dataset('test_seqs', data=test_seqs)
-h5f.create_dataset('test_labels', data=test_labels)
-h5f.close()
+# TODO read without converting the sequence -- determine training and test rows etc than read the input file again and convert and assign the labels and sequence and directly write to  output file without storing everything
+print("\nRunning through raw file again, converting sequences and store in sets ...")
+with open(args.in_file, "r") as f:
+    seq = []
+    # make iterators
+    test_i = 0
+    valid_i = 0
+    train_i = 0
+    for i,l in enumerate(f):
+        l = l.rstrip()
+        l = l.split("\t")
+        # get sequence
+        seq = l[4]
+        # convert to one hot coded
+        seq = get_hot_coded_seq(seq)
+        # match and write to respective hdf5 file
+        if i in test_rows[:]:
+            set_test_seq[test_i,] = seq
+            # test_rows = np.delete(test_rows, test_i)
+            test_i += 1
+        elif i in valid_rows[:]:
+            set_valid_seq[valid_i,] = seq
+            # valid_rows = np.delete(valid_rows, valid_i)
+            valid_i += 1
+        else:
+            set_train_seq[train_i,] = seq
+            train_i += 1
+        if i % 10000 == 0:
+            print('Written lines ... %s' % (i))
 
-# Save Validation Labels and Sequences
-validation_labels = label_bin[valid_rows,]
-validation_seqs = seq_hot[valid_rows,]
-h5f = h5py.File(args.save_prefix + "_validation_data.h5", 'w')
-h5f.create_dataset('validation_seqs', data=validation_seqs)
-h5f.create_dataset('validation_labels', data=validation_labels)
-h5f.close()
+# Close
+train_h5f.close()
+valid_h5f.close()
 
-print("\nSuccessfully saved a coord and a *data.npz file for each subset.\n")
+print("\nSaved the data Data.\n")
