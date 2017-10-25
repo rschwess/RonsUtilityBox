@@ -150,6 +150,9 @@ elif args.split_mode == 'chr':
     training_rows = np.delete(input_rows, (test_rows + valid_rows))
     print("%s Test cases \n%s Validation cases\n%s Training cases left." %
         (int(len(test_rows)), int(len(valid_rows)), int(len(training_rows))))
+    test_rows = input_rows[test_rows,]
+    valid_rows = input_rows[valid_rows,]
+    # print(test_rows)
 
 print("\nSampled into sets ...")
 # Convert sequences to hot coded numpy array
