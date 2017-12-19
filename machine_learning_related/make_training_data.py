@@ -39,6 +39,9 @@ parser.add_argument('--save_prefix', dest='save_prefix', default='./data_set',
     help='Prefix to store the training/ test and validation sets. Default = ./data_set')
 parser.add_argument('--seed', dest='seed', type=int, default=1234,
     help='Random seed for sampling.')
+parser.add_argument('--integer_label', dest='integer_label', type=bool, default=False,
+    help='Set to True if label should be treated and sorted as an integer.')
+
 # Parse arguments
 args = parser.parse_args()
 
@@ -91,8 +94,14 @@ with open(args.in_file, "r") as f:
 
 # Get all lables and sort and assign them to binary labels ---------------------
 label_tmp = [item for sublist in label_tmp for item in sublist]
-label_tmp = np.array(label_tmp)
+if args.integer_label == True:
+    label_tmp = np.array(label_tmp, dtype=int)
+else:
+    label_tmp = np.array(label_tmp, dtype=str)
 unique_labels = np.unique(label_tmp)
+unique_labels = unique_labels.astype(int)
+unique_labels = np.sort(unique_labels)  # sort numeric
+unique_labels = unique_labels.astype(str)
 num_ids = len(unique_labels)  # get number of unique ids
 print("\nNumber of distinct labels found: " + str(num_ids))
 print("\nDistinct labels: " + ' '.join(map(str,unique_labels)))
@@ -100,14 +109,14 @@ print("\nDistinct labels: " + ' '.join(map(str,unique_labels)))
 # make a look-up dictionary with a binary label per id
 bin_look_up = {}
 for i in range(num_ids):
-    bin_look_up[unique_labels[i]] = np.zeros((num_ids), dtype=np.uint64)
+    bin_look_up[unique_labels[i]] = np.zeros((num_ids), dtype=np.int)  # just changed that
     bin_look_up[unique_labels[i]][i] = 1
 # print a table with the intial labels for future reference
 print("\nConverting to binary representation:")
 for i in range(num_ids):
     print(unique_labels[i] + " -->\t" + ','.join(map(str, bin_look_up[unique_labels[i]])))
 # Go through labels per seq and sum up a binary representing all active IDs ----
-label_bin = np.zeros((len(label), num_ids),  dtype=np.float)
+label_bin = np.zeros((len(label), num_ids),  dtype=np.int)
 for j in range(len(label)):
     l = label[j].split(",") # split by commat
     for i in range(len(l)):
@@ -155,14 +164,6 @@ elif args.split_mode == 'chr':
     # print(test_rows)
 
 print("\nSampled into sets ...")
-# Convert sequences to hot coded numpy array
-# print("\nConverting sequences to hot coded representations ...")
-# seq_hot = np.empty((len(seq), len(seq[0]), 4), dtype=np.float)
-# for i in range(len(seq)):
-#     seq_hot[i,:] = get_hot_coded_seq(seq[i])
-# del seq
-# print(seq_hot.shape)
-
 
 # write training/test/validation set coords ------------------------------------
 print("\nStoring Coordinates ...")
@@ -180,7 +181,7 @@ for tr in valid_rows:
 print("\nInitializing hdf5 Storage Files ...")
 # and already store labels
 train_h5f = h5py.File(args.save_prefix + "_training_data.h5", 'w')
-set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
+set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]) , dtype='i')
 train_h5f.create_dataset('training_labels', data=label_bin[training_rows,])
 set_test_seq = train_h5f.create_dataset('test_seqs', (test_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
 train_h5f.create_dataset('test_labels', data=label_bin[test_rows,])
@@ -197,11 +198,21 @@ with open(args.in_file, "r") as f:
     test_i = 0
     valid_i = 0
     train_i = 0
+    skip_count = 0
     for i,l in enumerate(f):
         l = l.rstrip()
         l = l.split("\t")
         # get sequence
         seq = l[4]
+        # get first sequence length
+        if i == 0:
+            seq_length = len(seq)
+            print("Converting and storing sequences of length %s bp." % (seq_length))
+        # check sequence length matches
+        if len(seq) < seq_length:
+            # skip otherwise
+            skip_count = skip_count + 1
+            continue
         # convert to one hot coded
         seq = get_hot_coded_seq(seq)
         # match and write to respective hdf5 file
@@ -218,6 +229,7 @@ with open(args.in_file, "r") as f:
             train_i += 1
         if i % 10000 == 0:
             print('Written lines ... %s' % (i))
+    print("Skipped %s elements with sequence length != %s" % (skip_count, seq_length))
 
 # Close
 train_h5f.close()

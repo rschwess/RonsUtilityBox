@@ -59,15 +59,15 @@ open(IN, $inputfile) or die "Can't open input file $inputfile ! $!";
     chomp;
     ($chromosome, $start, $stop, @rest) = split(/\s+/, $_);
 
-		# correct for bed coordinates
-		$start++;
+    # correct for bed coordinates
+    $start++;
 
-		my $fai_location = $chromosome.':'.$start.'-'.$stop;
-		my $refseq = $fai->fetch($fai_location); # fetch sequence
-	  $refseq=~s/a/A/g;  # clean up Sequence
-	  $refseq=~s/g/G/g;
-	  $refseq=~s/t/T/g;
-  	$refseq=~s/c/C/g;
+    my $fai_location = $chromosome.':'.$start.'-'.$stop;
+    my $refseq = $fai->fetch($fai_location); # fetch sequence
+    $refseq=~s/a/A/g;  # clean up Sequence
+    $refseq=~s/g/G/g;
+    $refseq=~s/t/T/g;
+    $refseq=~s/c/C/g;
 
     # reset to bed coordinates
     $start--;
@@ -86,7 +86,7 @@ open(IN, $inputfile) or die "Can't open input file $inputfile ! $!";
 
 		print OUT2 "$chromosome\t$start\t$stop\t$conc_labels\t$refseq\n";
 
-		}
+    }
 
 close(IN);
 close(OUT2);

@@ -4,6 +4,7 @@
 library(ggplot2)
 library(RColorBrewer)
 library(grid, gridExtra)
+library(dplyr)
 
 #define theme for plotting
 # science_theme <- theme(
@@ -15,7 +16,7 @@ library(grid, gridExtra)
 science_theme <- theme(
   panel.grid.major = element_line(size = 0.5, color = "grey"),
   panel.grid.minor = element_blank(),
-  text = element_text(size = 14, family="Arial"),
+  # text = element_text(size = 14, family="Arial"),
   axis.line = element_line(color="black", size = 0.7),
   axis.line.x = element_line(color="black", size = 0.7),
   axis.line.y = element_line(color="black", size = 0.7)
@@ -116,7 +117,7 @@ GetDifferenceMatrix <- function(a, b){
   return(d)
 }
 
-ImportHicproMatrix <- function(matrix, coords){
+ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", nrow=-1){
   # Wrapper function for importing (pruned HiCPro) matrix and bin coords
   # Import a HiCPro matrix and the according bed coordinates assining the ids
   # Add a centric, single coord per bin region
@@ -125,24 +126,55 @@ ImportHicproMatrix <- function(matrix, coords){
   #
   # Args:
   #   matrix: 3 column matrix as result frm HiCPro or pruned version (id.x id.y, interaction)
-  #   coords: 4 column bed file (chr, start, end, id)
+  #   coords: 4 column bed file (chr, start, end, id) 
+  #   if left "empty" will assume coords can be read from the bins of the matrix and extract it from there
+  #   chr: needs to specified to add a chr to a matrix without bed format
+  #   nrows: number of rows to read in
   #
   # Returns:
   #   list: .$matrix.df .$bin.size .$start.pos .$start.id
   
   #read matrix
-  matrix.in <- read.table(matrix, header=FALSE, colClasses = rep("numeric", 3))
-  #read and format coords
-  coords.in <- read.table(coords, header=FALSE)
-  colnames(coords.in) <- c("chr", "start", "end", "id")
-  coords.in$center <- coords.in$start + ((coords.in$end - coords.in$start)/2) #add a centric column
-  
+  matrix.in <- read.table(matrix, header=FALSE, colClasses = rep("numeric", 3), nrow=nrow)
   #make data frame
   matrix.df <- as.data.frame(matrix.in)
   colnames(matrix.df) <- c("y","x", "value")
   
-  #get bin size and genomic position and id from start bin
-  bin.size <- coords.in$end[1] - coords.in$start[1] 
+  # if left "empty" will assume coords can be read from the bins of the matrix and extract it from there
+  if(coords == "empty"){
+    if(chr == "empty"){
+      # check that a chromosome to name is supplied
+      stop("Must supply a chromosome name when no bed coord file is present")
+    }
+    # create pseudo coord file
+    bins <- unique(sort(matrix.df$y))
+    # get bin size
+    bin.size <- abs(bins[1] - bins[2])
+    
+    # make ids
+    bin.ids <- bins/bin.size
+    # convert to id coord dataframe
+    coords.in <- data.frame(
+      chr = rep(chr, length(bins)),
+      start = bins,
+      end = bins + bin.size,
+      id = bin.ids
+    )
+    # reduce matrix to ids
+    matrix.df$y <- matrix.df$y/bin.size
+    matrix.df$x <- matrix.df$x/bin.size
+    
+  }else{
+    #read and format coords
+    coords.in <- read.table(coords, header=FALSE)
+    colnames(coords.in) <- c("chr", "start", "end", "id")
+    bin.size <- coords.in$end[1] - coords.in$start[1] # get bin size
+  }
+
+  # add centrier column
+  coords.in$center <- coords.in$start + ((coords.in$end - coords.in$start)/2) #add a centric column
+
+  #get genomic position and id from start bin
   start.id <- min(matrix.df$x)
   start.pos <- coords.in[coords.in$id == start.id, ]$center
   
@@ -509,5 +541,18 @@ PlotSignalTrack <- function(
   return(bg.p)
   
 }
+
+
+# SANDBOX ==========================================
+binInteractionValues <- function(hic, bins=9){
+  # Take hic interactions and bin them into [bins] distinc classes equally split
+  # will reserve one bin for true 0s
+  # Arguments:
+  #   bins: default=9, number of bins.quantiles to split the valus into
+  bins <- bins -1
+  hic$matrix.df$value <- ntile(hic$matrix.df$value[hic$matrix.df$value != 0], bins)
+  return(hic)
+}
+
 
 
