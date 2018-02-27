@@ -224,9 +224,6 @@ with open(input_snp_file, "r") as sfh:
             else:
                 snp_dict[line_split[2]]['chr'] = 'chr' + re.sub('[c,C]*hr', '', line_split[0])
 
-
-
-
 # 2) Extract and filter reads over SNP positions -------------------------
 for input_bamfile in args.bam:
 
@@ -237,20 +234,40 @@ for input_bamfile in args.bam:
         # save reads in temp list
         temp_reads = []
         # fetch reads // correct for pysam.fetch needing 1-based coordinate
-        for read in bamfile.fetch(snp_dict[key]['chr'], snp_dict[key]['pos'] + 1, snp_dict[key]['pos'] + 2):
+        for read in bamfile.fetch(snp_dict[key]['chr'], snp_dict[key]['pos'], snp_dict[key]['pos'] + 1):
+
+            # Filter .0) skip every read that is not a pure match (no soft or hard clips allowed etc.)
+            if re.search('[I,D,S,H,N]+', read.cigarstring):
+                continue
 
             # Filter.1) filter for number of mismatches per read
             # get read missmatches from NM tag
-            read_missmatches = read.get_tag('NM')
-            if read_missmatches > MAX_MISSMATCHES_PER_READ:
-                continue  # skip reads with to many missmatches
+            if read.has_tag('NM'):
+                read_missmatches = read.get_tag('NM')
+                if read_missmatches > MAX_MISSMATCHES_PER_READ:
+                    continue  # skip reads with to many missmatches
+            elif read.has_tag('nM'):
+                read_missmatches = read.get_tag('nM')
+                if read_missmatches > MAX_MISSMATCHES_PER_READ:
+                    continue  # skip reads with to many missmatches
+            elif read.has_tag('nm'):
+                read_missmatches = read.get_tag('nm')
+                if read_missmatches > MAX_MISSMATCHES_PER_READ:
+                    continue  # skip reads with to many missmatches
+            else:
+                continue  # no mumber of missmatches flag available
 
             # Filter.2) Filter for Mapping quality at SNP position
             base_quals = read.query_alignment_qualities
+            # print(base_quals)
 
             # get the relative position of the snp for that read while
             # correcting back to 0-based coord
             temp_pos = snp_dict[key]['pos'] - read.reference_start
+            print(read)
+            print(snp_dict[key]['pos'])
+            print(read.reference_start)
+            print(temp_pos)
             if base_quals[temp_pos] < MIN_BASE_QUAL_AT_SNP:
                 continue  # skip reads with poor mapq at SNP position
 
