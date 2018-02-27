@@ -264,10 +264,6 @@ for input_bamfile in args.bam:
             # get the relative position of the snp for that read while
             # correcting back to 0-based coord
             temp_pos = snp_dict[key]['pos'] - read.reference_start
-            print(read)
-            print(snp_dict[key]['pos'])
-            print(read.reference_start)
-            print(temp_pos)
             if base_quals[temp_pos] < MIN_BASE_QUAL_AT_SNP:
                 continue  # skip reads with poor mapq at SNP position
 
@@ -292,7 +288,6 @@ for key in snp_dict:
     else:
         # flag that sufficient reads have been found
         snp_dict[key]['flag_sufficient_reads'] = True
-
 
 # 3) Split allelic reads -------------------------------------------------
 # Go through all reads and split bases at SNP positons into allels if
