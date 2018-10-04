@@ -150,6 +150,8 @@ MAX_MISSMATCHES_PER_READ = args.max_missmatches
 MIN_BASE_QUAL_AT_SNP = args.min_baseq
 MIN_READS_AT_SNP = args.min_reads
 
+no_miss_match_flag_flag = False
+
 # significance level threshold (FDR/q-value) to apply if report == sginificant
 significance_level = 0.05
 
