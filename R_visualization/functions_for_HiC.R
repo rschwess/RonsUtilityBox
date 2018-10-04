@@ -1,7 +1,7 @@
 # FUNCTIONS FOR HiC DATA ANALYSIS AND VISUALISATION
 # Ron Schweßinger
 # 
-library(ggplot2)
+library(tidyverse)
 library(RColorBrewer)
 library(grid, gridExtra)
 library(dplyr)
@@ -23,12 +23,13 @@ science_theme <- theme(
 )
 
 # define themes for metling plots
-melting_theme_hic <- theme(
-  axis.text=element_blank(),
-  axis.ticks=element_blank(),
-  axis.line = element_blank(),
-  panel.border=element_blank()
-)
+melting_theme_hic <- theme(axis.text.x = element_blank(),
+                           axis.text.y = element_blank(),
+                           axis.ticks=element_blank(),
+                           axis.line = element_blank(),
+                           panel.border = element_blank(),
+                           axis.line.x = element_blank(),
+                           axis.line.y = element_blank())
 
 melting_theme_signal <- theme(
   axis.text.x=element_blank(),
@@ -117,7 +118,7 @@ GetDifferenceMatrix <- function(a, b){
   return(d)
 }
 
-ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", nrow=-1){
+ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", bin.size=0, nrow=-1){
   # Wrapper function for importing (pruned HiCPro) matrix and bin coords
   # Import a HiCPro matrix and the according bed coordinates assining the ids
   # Add a centric, single coord per bin region
@@ -137,7 +138,8 @@ ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", nrow=-1){
   #read matrix
   matrix.in <- read.table(matrix, header=FALSE, colClasses = rep("numeric", 3), nrow=nrow)
   #make data frame
-  matrix.df <- as.data.frame(matrix.in)
+  # matrix.df <- as.data.frame(matrix.in)
+  matrix.df <- as.tibble(matrix.in)
   colnames(matrix.df) <- c("y","x", "value")
   
   # if left "empty" will assume coords can be read from the bins of the matrix and extract it from there
@@ -146,27 +148,31 @@ ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", nrow=-1){
       # check that a chromosome to name is supplied
       stop("Must supply a chromosome name when no bed coord file is present")
     }
+    if(bin.size == 0){
+      # check that a chromosome to name is supplied
+      stop("Must supply a positive, matching bin.size if no coord file present")
+    }
     # create pseudo coord file
     bins <- unique(sort(matrix.df$y))
-    # get bin size
-    bin.size <- abs(bins[1] - bins[2])
+    # # get bin size
+    # bin.size <- abs(bins[1] - bins[2])
     
     # make ids
     bin.ids <- bins/bin.size
     # convert to id coord dataframe
-    coords.in <- data.frame(
+    coords.in <- as.tibble(data.frame(
       chr = rep(chr, length(bins)),
       start = bins,
       end = bins + bin.size,
       id = bin.ids
-    )
+    ))
     # reduce matrix to ids
     matrix.df$y <- matrix.df$y/bin.size
     matrix.df$x <- matrix.df$x/bin.size
     
   }else{
     #read and format coords
-    coords.in <- read.table(coords, header=FALSE)
+    coords.in <- as.tibble(read.table(coords, header=FALSE))
     colnames(coords.in) <- c("chr", "start", "end", "id")
     bin.size <- coords.in$end[1] - coords.in$start[1] # get bin size
   }
@@ -178,16 +184,24 @@ ImportHicproMatrix <- function(matrix, coords="empty", chr="empty", nrow=-1){
   start.id <- min(matrix.df$x)
   start.pos <- coords.in[coords.in$id == start.id, ]$center
   
+  # add x.id and y.id column to identify across chromosomes
+  matrix.df$y.id <- matrix.df$y
+  matrix.df$x.id <- matrix.df$x
+  
   #convert bin ids to center of bin region coords
-  matrix.df$x <- ConvertBinToPos(matrix.df$x, 
-                                     bin.size=bin.size, 
-                                     start.pos=start.pos, 
+  matrix.df$x <- ConvertBinToPos(matrix.df$x,
+                                     bin.size=bin.size,
+                                     start.pos=start.pos,
+                                     start.id=start.id)
+
+  matrix.df$y <- ConvertBinToPos(matrix.df$y,
+                                     bin.size=bin.size,
+                                     start.pos=start.pos,
                                      start.id=start.id)
   
-  matrix.df$y <- ConvertBinToPos(matrix.df$y, 
-                                     bin.size=bin.size, 
-                                     start.pos=start.pos, 
-                                     start.id=start.id)
+  
+  # sort after$y
+  # matrix.df <- matrix.df[order(matrix.df$y, matrix.df$x), ]
   
   return(list(matrix.df=matrix.df, coords=coords.in, bin.size=bin.size, start.pos=start.pos, start.id=start.id))
   
@@ -309,22 +323,23 @@ MakeTriangleMatrix <- function(df){
   
 }
 
-PruneHicproMatrix <- function(hic, chr, start, end){
+PruneHicproMatrix <- function(hics, chrs, starts, ends){
   # Function to prune a matrix to zoom into a region of interest
   # Take a list object as imported with ImportHicproMatrix
   # and prune it to include only interactions between the genomix coordinates chosen
-
-  #get bins in ROI
-  hic$coords <- hic$coords[((hic$coords$chr == chr) & (hic$coords$center >= start) & (hic$coords$center <= end)),]
   
-  #get interactions in ROI
-  hic$matrix.df <- hic$matrix.df[((hic$matrix.df$y %in% hic$coords$center) & (hic$matrix.df $x %in% hic$coords$center)),]
+  # get bins in ROI
+  hics$coords <- hics$coords %>%
+    filter(chr == chrs & center >= starts & center <= ends)
   
-  #adjust start.id and start.pos (for plotting)
-  hic$start.id <- min(hic$coords$id)
-  hic$start.pos <- min(hic$matrix.df$y)
+  # get interactions in ROI
+  hics$matrix.df <- hics$matrix.df[((hics$matrix.df$y.id %in% hics$coords$id) & (hics$matrix.df$x.id %in% hics$coords$id)),]
   
-  return(hic)
+  # adjust start.id and start.pos (for plotting)
+  hics$start.id <- min(hics$coords$id)
+  hics$start.pos <- min(hics$matrix.df$y)
+  
+  return(hics)
   
 }
 
@@ -384,7 +399,7 @@ PlotAnnotation <- function(
       axis.line.y=element_blank(),
       axis.ticks.y = element_blank(),
       panel.grid.major = element_blank(),
-      panel.border = element_blank(),
+      panel.border = element_blank()
       # plot.margin = unit(c(0,1,0,1), "lines")
     )
   
@@ -393,58 +408,66 @@ PlotAnnotation <- function(
 }
 
 PlotSquareMatrix <- function(
-  matrix.df,
+  hic,
   break.number = 5,
   square=FALSE,
   format = "s",
   pal = "YlOrRd"
 ){
-# Wrapper function to plot a matrix given a 3 column dataframe as input
-# Print a Square Matrix plot given a three column (y, x, value) and grafik options
-#
-# Args:
-#   matrix.df: 3 column df c(y, x, value)
-#   break.number: number of breaks to print on axis default=5
-#   square: FALSE/TRUE [default FALSE] indicate if to mirror a trianglualr matrix to get a full matrix plot
-#   format: options to format the gneomic postion (s=single, k=in kilo, M=in Mega) default="s"
-#   pal: RColorBrewer palette to use default="YlOrRd"
-#
-# Returns:
-#   ggplot2 plot
+  # Wrapper function to plot a matrix given a 3 column dataframe as input
+  # Print a Square Matrix plot given a three column (y, x, value) and grafik options
+  #
+  # Args:
+  #   hic object list as above
+  #   break.number: number of breaks to print on axis default=5
+  #   square: FALSE/TRUE [default FALSE] indicate if to mirror a trianglualr matrix to get a full matrix plot
+  #   format: options to format the gneomic postion (s=single, k=in kilo, M=in Mega) default="s"
+  #   pal: RColorBrewer palette to use default="YlOrRd"
+  #
+  # Returns:
+  #   ggplot2 plot
+  # select color scheme colours
+  colors <- brewer.pal(9, pal) 
   
-# select color scheme colours
-colors <- brewer.pal(9, pal) 
-
-#mirror data frame if selected
-if(square){
-  matrix.df <- MakeMirrorMatrix(matrix.df)
+  # get matrix
+  matrix.df <- hic$matrix.df
+  
+  # match and get chromosomal position from coords id
+  matrix.df$y <- hic$coords$center[match(matrix.df$y.id, hic$coords$id)]
+  matrix.df$x <- hic$coords$center[match(matrix.df$x.id, hic$coords$id)]
+  matrix.df <- matrix.df[,c(1:3)]
+  
+  #mirror data frame if selected
+  if(square){
+    matrix.df <- MakeMirrorMatrix(matrix.df)
+  }
+  
+  # pre-set breaks
+  step <- ((max(matrix.df$y) - min(matrix.df$y)) - ((max(matrix.df$y) - min(matrix.df$y)) %% (break.number-1)))/(break.number-1)
+  breaks <- seq(from=min(matrix.df$y), to=max(matrix.df$y), by=step)
+  labels <- sapply(breaks, function(x){ FormatBp(x, type=format)}) 
+  
+  p <- ggplot(data = matrix.df, aes(x=x, y=y, fill=value)) + 
+    geom_tile(width=hic$bin.size, height=hic$bin.size) + 
+    scale_x_continuous(breaks=breaks, label=labels) +
+    scale_y_reverse(breaks=breaks, label=labels) +
+    scale_fill_gradientn(colours=colors) + 
+    science_theme + 
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      strip.background = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  return(p)
+  
 }
 
-# pre-set breaks
-step <- ((max(matrix.df$y) - min(matrix.df$y)) - ((max(matrix.df$y) - min(matrix.df$y)) %% (break.number-1)))/(break.number-1)
-breaks <- seq(from=min(matrix.df$y), to=max(matrix.df$y), by=step)
-labels <- sapply(breaks, function(x){ FormatBp(x, type=format)}) 
-
-p <- ggplot(data = matrix.df, aes(x=x, y=y, fill=value)) + 
-  geom_raster() + 
-  scale_x_continuous(breaks=breaks, label=labels) +
-  scale_y_reverse(breaks=breaks, label=labels) +
-  scale_fill_gradientn(colours=colors) + 
-  science_theme + 
-  theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    strip.background = element_blank(),
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank()
-  )
-
-return(p)
-
-}
 
 PlotTriangleMatrix <- function(
-  matrix.df,
+  hic,
   break.number = 5,
   format = "s",
   pal = "YlOrRd"
@@ -462,6 +485,14 @@ PlotTriangleMatrix <- function(
   
   # select color scheme colours
   colors <- brewer.pal(9, pal) 
+  
+  # get matrix
+  matrix.df <- hic$matrix.df
+
+  # match and get chromosomal position from coords id
+  matrix.df$y <- hic$coords$center[match(matrix.df$y.id, hic$coords$id)]
+  matrix.df$x <- hic$coords$center[match(matrix.df$x.id, hic$coords$id)]
+  matrix.df <- matrix.df[,c(1:3)]
 
   # convert matrix to triangle plot polygon matrix format if not in right format yet
   if(!"pos" %in% colnames(matrix.df)){
@@ -543,7 +574,7 @@ PlotSignalTrack <- function(
 }
 
 
-# SANDBOX ==========================================
+# HELPER ===========================================
 binInteractionValues <- function(hic, bins=9){
   # Take hic interactions and bin them into [bins] distinc classes equally split
   # will reserve one bin for true 0s
@@ -554,5 +585,143 @@ binInteractionValues <- function(hic, bins=9){
   return(hic)
 }
 
+leftHandNotate <- function(matrix){
+  # helper Function to change matrix notation to left msot base of the bin notation
+  matrix$x <- matrix$x - 500
+  matrix$y <- matrix$y - 500
+  return(matrix)
+}
 
+# LEGACY ==========================================
+PlotSquareMatrixOld <- function(
+  matrix.df,
+  break.number = 5,
+  square=FALSE,
+  format = "s",
+  pal = "YlOrRd"
+){
+  # Wrapper function to plot a matrix given a 3 column dataframe as input
+  # Print a Square Matrix plot given a three column (y, x, value) and grafik options
+  #
+  # Args:
+  #   matrix.df: 3 column df c(y, x, value)
+  #   break.number: number of breaks to print on axis default=5
+  #   square: FALSE/TRUE [default FALSE] indicate if to mirror a trianglualr matrix to get a full matrix plot
+  #   format: options to format the gneomic postion (s=single, k=in kilo, M=in Mega) default="s"
+  #   pal: RColorBrewer palette to use default="YlOrRd"
+  #
+  # Returns:
+  #   ggplot2 plot
+  
+  # select color scheme colours
+  colors <- brewer.pal(9, pal) 
+  
+  #mirror data frame if selected
+  if(square){
+    matrix.df <- MakeMirrorMatrix(matrix.df)
+  }
+  
+  # pre-set breaks
+  step <- ((max(matrix.df$y) - min(matrix.df$y)) - ((max(matrix.df$y) - min(matrix.df$y)) %% (break.number-1)))/(break.number-1)
+  breaks <- seq(from=min(matrix.df$y), to=max(matrix.df$y), by=step)
+  labels <- sapply(breaks, function(x){ FormatBp(x, type=format)}) 
+  
+  p <- ggplot(data = matrix.df, aes(x=x, y=y, fill=value)) + 
+    geom_raster() + 
+    scale_x_continuous(breaks=breaks, label=labels) +
+    scale_y_reverse(breaks=breaks, label=labels) +
+    scale_fill_gradientn(colours=colors) + 
+    science_theme + 
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      strip.background = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank()
+    )
+  
+  return(p)
+  
+}
 
+PruneHicproMatrixOld <- function(hic, chr, start, end){
+  # Function to prune a matrix to zoom into a region of interest
+  # Take a list object as imported with ImportHicproMatrix
+  # and prune it to include only interactions between the genomix coordinates chosen
+  
+  #get bins in ROI
+  hic$coords <- hic$coords[((hic$coords$chr == chr) & (hic$coords$center >= start) & (hic$coords$center <= end)),]
+  
+  #get interactions in ROI
+  hic$matrix.df <- hic$matrix.df[((hic$matrix.df$y %in% hic$coords$center) & (hic$matrix.df $x %in% hic$coords$center)),]
+  
+  #adjust start.id and start.pos (for plotting)
+  hic$start.id <- min(hic$coords$id)
+  hic$start.pos <- min(hic$matrix.df$y)
+  
+  return(hic)
+  
+}
+
+PlotTriangleMatrixOld <- function(
+  matrix.df,
+  break.number = 5,
+  format = "s",
+  pal = "YlOrRd"
+){
+  # Print a Triangular Matrix over genomic locus plot given a three column (y, x, value) and grafic options
+  #
+  # Args:
+  #   matrix.df: 3 column df c(y, x, value)
+  #   break.number: number of breaks to print on axis default=5
+  #   format: options to format the gneomic postion (s=single, k=in kilo, M=in Mega) default="s"
+  #   pal: RColorBrewer palette to use default="YlOrRd"
+  #
+  # Returns:
+  #   ggplot2 plot
+  
+  # select color scheme colours
+  colors <- brewer.pal(9, pal) 
+  
+  # get matrix
+  matrix.df <- hic$matrix.df
+  
+  # match and get chromosomal position from coords id
+  matrix.df$y <- hic$coords$center[match(matrix.df$y, hic$coords$id)]
+  matrix.df$x <- hic$coords$center[match(matrix.df$x, hic$coords$id)]
+  
+  # convert matrix to triangle plot polygon matrix format if not in right format yet
+  if(!"pos" %in% colnames(matrix.df)){
+    tri <- MakeTriangleMatrix(matrix.df)
+  }else{
+    tri <- matrix.df
+  }
+  
+  # pre-set breaks (#TODO --> fix to round values rather then performing an actual rounding!!!)
+  step <- ((max(matrix.df$x) - min(matrix.df$x)) - ((max(matrix.df$x) - min(matrix.df$x)) %% (break.number-1)))/(break.number-1)
+  breaks <- seq(from=min(matrix.df$x), to=max(matrix.df$x), by=step)
+  labels <- sapply(breaks, function(x){ FormatBp(x, type=format)}) 
+  
+  # Plot 
+  t <- ggplot(data = tri, aes(x=x, y=y, fill=value, group=id)) + 
+    geom_polygon() +
+    scale_x_continuous(breaks=breaks, label=labels) +
+    coord_cartesian(xlim=c(min(matrix.df$x), max(matrix.df$x)), ylim=c(0, max(tri$y))) +
+    scale_fill_gradientn(colours=colors) +
+    science_theme + 
+    theme(
+      legend.position = c(0.925, 0.75),
+      # axis.text.y = element_blank(),
+      # axis.ticks.y = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      # strip.ba = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(angle=45, vjust=0.5),
+      strip.background = element_blank()
+    )
+  
+  return(t)
+  
+}

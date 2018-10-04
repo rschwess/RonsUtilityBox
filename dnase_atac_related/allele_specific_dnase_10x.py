@@ -54,84 +54,96 @@ not yet work with indels! They are automatically excluded from the analysis.
 Requires: python3, pysam, scipy, statsmodels
 """)
 
-# Define Arguments to parse ----------------------------------------------
-parser.add_argument('-s', '--snps',
-                    metavar='<snp.file>',
-                    type=str,
-                    nargs=1,
-                    required=True,
-                    help="""SNP file. Bed-like format with mininimum: chr start end
-                    id reference alternative. If more columns supplied specify in
-                    which columns to find the reference and alternative base using
-                     --refcol and --altcol.""")
+# # Define Arguments to parse ----------------------------------------------
+# parser.add_argument('-s', '--snps',
+#                     metavar='<snp.file>',
+#                     type=str,
+#                     nargs=1,
+#                     required=True,
+#                     help="""SNP file. Bed-like format with mininimum: chr start end
+#                     id reference alternative. If more columns supplied specify in
+#                     which columns to find the reference and alternative base using
+#                      --refcol and --altcol.""")
+#
+# parser.add_argument('-b', '--bam',
+#                     metavar='<bam.file1>',
+#                     nargs='+',
+#                     required=True,
+#                     help="""Space separated list of bam files. Use same
+#                     individual and compatible source!""")
+#
+# parser.add_argument('--max_missmatches',
+#                     metavar='M',
+#                     type=int,
+#                     default=2,
+#                     help="""Number of missmatches per read allowed.
+#                     Reads with more missmatches will be filtered. Default: 2""")
+#
+# parser.add_argument('--min_baseq',
+#                     metavar='Q',
+#                     type=int,
+#                     default=0,
+#                     help="""Minimum base quality at the SNP position for a
+#                      read to be considered. Default: 0""")
+#
+# parser.add_argument('--min_reads',
+#                     metavar='R',
+#                     type=int,
+#                     default=10,
+#                     help="""Minimum number of valid reads per SNP required to
+#                     test it for allelic imbalance. Default: 10""")
+#
+# parser.add_argument('-f', '--format',
+#                     metavar='bed',
+#                     type=str,
+#                     default='bed',
+#                     choices=('bed', 'vcf'),
+#                     help='Format of the snp file. [bed or vcf] with default: bed')
+#
+# parser.add_argument('--refcol',
+#                     metavar='N',
+#                     type=int,
+#                     help="""Column where to find the reference base. Default for
+#                     VCF format is 4 and for bed format 5.""")
+#
+# parser.add_argument('--altcol',
+#                     metavar='N',
+#                     type=int,
+#                     help="""Column where to find the alternative base.
+#                     Default for VCF format is 5 and for bed format 6.""")
+#
+# parser.add_argument('--sortby',
+#                     metavar='<pvalue/position>',
+#                     default='pvalue',
+#                     choices=('pvalue', 'position'),
+#                     help="""Select if to sort the output by pvalue or
+#                     chromosomal position. [Default: pvalue]""")
+#
+# parser.add_argument('--report',
+#                     metavar='<all>',
+#                     default='all',
+#                     choices=('all', 'valid', 'significant'),
+#                     help="""Select if to report all, only valid or only
+#                     singificant (< FDR 0.05) [Default: all]""")
+#
+#
+# # Parse, Test and Assign Arguments ---------------------------------------
+# args = parser.parse_args()
 
-parser.add_argument('-b', '--bam',
-                    metavar='<bam.file1>',
-                    nargs='+',
-                    required=True,
-                    help="""Space separated list of bam files. Use same
-                    individual and compatible source!""")
-
-parser.add_argument('--max_missmatches',
-                    metavar='M',
-                    type=int,
-                    default=2,
-                    help="""Number of missmatches per read allowed.
-                    Reads with more missmatches will be filtered. Default: 2""")
-
-parser.add_argument('--min_baseq',
-                    metavar='Q',
-                    type=int,
-                    default=0,
-                    help="""Minimum base quality at the SNP position for a
-                     read to be considered. Default: 0""")
-
-parser.add_argument('--min_reads',
-                    metavar='R',
-                    type=int,
-                    default=10,
-                    help="""Minimum number of valid reads per SNP required to
-                    test it for allelic imbalance. Default: 10""")
-
-parser.add_argument('-f', '--format',
-                    metavar='bed',
-                    type=str,
-                    default='bed',
-                    choices=('bed', 'vcf'),
-                    help='Format of the snp file. [bed or vcf] with default: bed')
-
-parser.add_argument('--refcol',
-                    metavar='N',
-                    type=int,
-                    help="""Column where to find the reference base. Default for
-                    VCF format is 4 and for bed format 5.""")
-
-parser.add_argument('--altcol',
-                    metavar='N',
-                    type=int,
-                    help="""Column where to find the alternative base.
-                    Default for VCF format is 5 and for bed format 6.""")
-
-parser.add_argument('--sortby',
-                    metavar='<pvalue/position>',
-                    default='pvalue',
-                    choices=('pvalue', 'position'),
-                    help="""Select if to sort the output by pvalue or
-                    chromosomal position. [Default: pvalue]""")
-
-parser.add_argument('--report',
-                    metavar='<all>',
-                    default='all',
-                    choices=('all', 'valid', 'significant'),
-                    help="""Select if to report all, only valid or only
-                    singificant (< FDR 0.05) [Default: all]""")
-
-
-# Parse, Test and Assign Arguments ---------------------------------------
-args = parser.parse_args()
+# manual arguments for working
+bam_file = "/home/ron/fusessh/dissecting_erythroid_gwas/allele_specific/10x/little.bam"
+input_snp_file = "/home/ron/fusessh/dissecting_erythroid_gwas/allele_specific/10x/variantSkew.bed"
+args_max_missmatches = 2000
+args_min_baseq = 0
+args_min_reads = 1
+args_format = 'bed'
+args_refcol = 5
+args_altcol = 6
+args_sortby = 'position'
+args_report = 'all'
 
 # Test and assign arguments
-input_snp_file = args.snps[0]  # input a snp_file in bed (vcf) format
+# input_snp_file = args_snps[0]  # input a snp_file in bed (vcf) format
 
 if not isfile(input_snp_file):  # break if no valid snp file
     print("""The provided SNP file [-s --snps] is not a valid file.
@@ -139,16 +151,16 @@ if not isfile(input_snp_file):  # break if no valid snp file
     sys.exit()
 
 # test all supplied bam files
-for bam_file in args.bam:
+for bam_file in args_bam:
     if not isfile(bam_file):
         print(bam_file + ' is not a valid file please check your input!')
         sys.exit()
 
 # Filter Parameters
-SNP_FORMAT = args.format
-MAX_MISSMATCHES_PER_READ = args.max_missmatches
-MIN_BASE_QUAL_AT_SNP = args.min_baseq
-MIN_READS_AT_SNP = args.min_reads
+SNP_FORMAT = args_format
+MAX_MISSMATCHES_PER_READ = args_max_missmatches
+MIN_BASE_QUAL_AT_SNP = args_min_baseq
+MIN_READS_AT_SNP = args_min_reads
 
 # significance level threshold (FDR/q-value) to apply if report == sginificant
 significance_level = 0.05
@@ -157,21 +169,21 @@ significance_level = 0.05
 ref_col = 0
 alt_col = 0
 
-if args.refcol is not None:
-    ref_col = args.refcol
+if args_refcol is not None:
+    ref_col = args_refcol
 else:
-    if args.format == 'bed':
+    if args_format == 'bed':
         ref_col = 5
-    elif args.format == 'vcf':
+    elif args_format == 'vcf':
         ref_col = 4
 
-if args.altcol is not None:
-    alt_col = args.altcol
+if args_altcol is not None:
+    alt_col = args_altcol
 
 else:
-    if args.format == 'bed':
+    if args_format == 'bed':
         alt_col = 6
-    elif args.format == 'vcf':
+    elif args_format == 'vcf':
         alt_col = 5
 
 # adjust for 0-based indexing
@@ -225,61 +237,65 @@ with open(input_snp_file, "r") as sfh:
                 snp_dict[line_split[2]]['chr'] = 'chr' + re.sub('[c,C]*hr', '', line_split[0])
 
 # 2) Extract and filter reads over SNP positions -------------------------
-for input_bamfile in args.bam:
+# for input_bamfile in args_bam:
+input_bamfile = bam_file
 
-    # open as bam file
-    bamfile = pysam.AlignmentFile(input_bamfile, "rb")
+# open as bam file
+bamfile = pysam.AlignmentFile(input_bamfile, "rb")
 
-    for key in snp_dict:
-        # save reads in temp list
-        temp_reads = []
-        # fetch reads // correct for pysam.fetch needing 1-based coordinate
-        for read in bamfile.fetch(snp_dict[key]['chr'], snp_dict[key]['pos'], snp_dict[key]['pos'] + 1):
+# for key in snp_dict:
+key = 'rs9944767'
+fetcher = bamfile.fetch(snp_dict[key]['chr'], snp_dict[key]['pos'], snp_dict[key]['pos'] + 1)
+# save reads in temp list
+temp_reads = []
+# fetch reads // correct for pysam.fetch needing 1-based coordinate
+for read in fetcher:
 
-            # Filter .0) skip every read that is not a pure match (no soft or hard clips allowed etc.)
-            if re.search('[I,D,N]+', read.cigarstring):
-               continue
-	        # INCLUDING S and H flag for 10x
+    # Filter .0) skip every read that is not a pure match (no soft or hard clips allowed etc.)
+    if re.search('[I,D,N]+', read.cigarstring):
+       continue
+    # INCLUDING S and H flag for 10x testing !!!
 
-            # Filter.1) filter for number of mismatches per read
-            # get read missmatches from NM tag
-            if read.has_tag('NM'):
-                read_missmatches = read.get_tag('NM')
-                if read_missmatches > MAX_MISSMATCHES_PER_READ:
-                    continue  # skip reads with to many missmatches
-            elif read.has_tag('nM'):
-                read_missmatches = read.get_tag('nM')
-                if read_missmatches > MAX_MISSMATCHES_PER_READ:
-                    continue  # skip reads with to many missmatches
-            elif read.has_tag('nm'):
-                read_missmatches = read.get_tag('nm')
-                if read_missmatches > MAX_MISSMATCHES_PER_READ:
-                    continue  # skip reads with to many missmatches
-            else:
-                no_miss_match_flag_flag = True
+    # Filter.1) filter for number of mismatches per read
+    # get read missmatches from NM tag
+    if read.has_tag('NM'):
+        read_missmatches = read.get_tag('NM')
+        if read_missmatches > MAX_MISSMATCHES_PER_READ:
+            continue  # skip reads with to many missmatches
+    elif read.has_tag('nM'):
+        read_missmatches = read.get_tag('nM')
+        if read_missmatches > MAX_MISSMATCHES_PER_READ:
+            continue  # skip reads with to many missmatches
+    elif read.has_tag('nm'):
+        read_missmatches = read.get_tag('nm')
+        if read_missmatches > MAX_MISSMATCHES_PER_READ:
+            continue  # skip reads with to many missmatches
+    else:
+        continue  # no mumber of missmatches flag available
 
-            # Filter.2) Filter for Mapping quality at SNP position
-            base_quals = read.query_alignment_qualities
+    # Filter.2) Filter for Mapping quality at SNP position
+    base_quals = read.query_alignment_qualities
+    # print(base_quals)
 
-            # get the relative position of the snp for that read while
-            # correcting back to 0-based coord
-            temp_pos = snp_dict[key]['pos'] - read.reference_start
-            if base_quals[temp_pos] < MIN_BASE_QUAL_AT_SNP:
-                continue  # skip reads with poor mapq at SNP position
+    # get the relative position of the snp for that read while
+    # correcting back to 0-based coord
+    temp_pos = snp_dict[key]['pos'] - read.reference_start
+    if base_quals[temp_pos] < MIN_BASE_QUAL_AT_SNP:
+        continue  # skip reads with poor mapq at SNP position
 
-            # append filter passing reads to temp_list
-            temp_reads.append(read)
+    # append filter passing reads to temp_list
+    temp_reads.append(read)
 
-        # add all valid read to the snp_dict read slot
-        if 'reads' in snp_dict[key]:
-            snp_dict[key]['reads'] = snp_dict[key]['reads'] + list(temp_reads)
-        else:
-            snp_dict[key]['reads'] = list(temp_reads)
+temp_reads
 
-    # close up bam file
-    bamfile.close()
+# add all valid read to the snp_dict read slot
+if 'reads' in snp_dict[key]:
+    snp_dict[key]['reads'] = snp_dict[key]['reads'] + list(temp_reads)
+else:
+    snp_dict[key]['reads'] = list(temp_reads)
 
-print()
+# close up bam file
+bamfile.close()
 
 # Filter.3) Once through all bam files. Go through every SNP and check if
 # the minimum read number has been reached ... fag and discard otherwise
@@ -356,7 +372,7 @@ for key in snp_dict:
             # else use the base with most counts
             for allele_bases in snp_dict[key]['allelic_dict']:
 
-                if allele_bases != snp_dict[key]['alt'] and snp_dict[key]['allelic_dict'][allele_bases]['count'] >= args.min_reads:
+                if allele_bases != snp_dict[key]['alt'] and snp_dict[key]['allelic_dict'][allele_bases]['count'] >= args_min_reads:
                     ref_allele_count = snp_dict[key][
                         'allelic_dict'][allele_bases]['count']
                     ref_allele_base = allele_bases
@@ -504,7 +520,7 @@ sorted_keys = []
 sort_keys = []
 sort_values = []
 
-if args.sortby == 'pvalue':
+if args_sortby == 'pvalue':
     # get keys p values from snp_dict
     for k in snp_dict:
         sort_keys.append(k)
@@ -515,7 +531,7 @@ if args.sortby == 'pvalue':
     # sort
     sorted_keys = [x for (y, x) in sorted(zip(sort_values, sort_keys))]
 
-elif args.sortby == 'position':
+elif args_sortby == 'position':
     # get chr and pos arguments, trim the chr from chr prior to sorting
     for k in snp_dict:
         temp_chr = snp_dict[k]['chr']
@@ -544,9 +560,6 @@ elif args.sortby == 'position':
 print('##Run: allele_specifc_dnase.py ' + VERSION)
 print('##Input SNPs: %s  Queried: %s  Not Queried: %s  Ignored Indels: %s' %
 (total_count, queried_count, not_queried_count, indel_count))
-
-if no_miss_match_flag_flag:
-    print("##No missmatch flag in BAM file, not filtering on NM")
 
 print('#chr\tstart\tend\tref\talt\tp.value\tq.value\tall.alleles\tcomments')
 
@@ -585,14 +598,14 @@ for key in sorted_keys:
 
     # PRINT LINE if matches the criteria for printing
     # print all
-    if args.report == 'all':
+    if args_report == 'all':
         print(output)
     # or print all valid
-    elif args.report == 'valid':
+    elif args_report == 'valid':
         if key in valid_tests_dict:
             print(output)
     # or print all valid and significant
-    elif args.report == 'significant':
+    elif args_report == 'significant':
         if(
             key in valid_tests_dict and
             valid_tests_dict[key]['qvalue'] < significance_level

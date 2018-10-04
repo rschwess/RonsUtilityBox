@@ -259,6 +259,42 @@ reverseBase <- function(b){
   return(r)
 }
 
+# PWM tranformation (Ding et al)
+weightsToPwm <- function(W, base=1000){
+  C <- base^W  # exp transform
+  tC <- as.data.frame(t(C))
+  tC$sum <- tC$A + tC$C + tC$G + tC$T
+  tC$A <- tC$A / tC$sum
+  tC$C <- tC$C / tC$sum
+  tC$G <- tC$G / tC$sum
+  tC$T <- tC$T / tC$sum
+  C <- t(tC[,-5])
+  return(C)
+}
+
+# ICM tranformation
+weightsToIcm <- function(W, base = 1000){
+  
+  C <- base^W  # exp transform
+  tC <- as.data.frame(t(C))
+  # normalize per column
+  tC$sum <- tC$A + tC$C + tC$G + tC$T
+  tC$A <- tC$A / tC$sum
+  tC$C <- tC$C / tC$sum
+  tC$G <- tC$G / tC$sum
+  tC$T <- tC$T / tC$sum
+  tC <- tC[,-5]
+  # apply information content
+  tC$I <- 2 + (tC$A * log2(tC$A)) + (tC$C * log2(tC$C)) + (tC$G * log2(tC$G)) + (tC$T * log2(tC$T))
+  tC$A <- tC$A * tC$I
+  tC$C <- tC$C * tC$I
+  tC$G <- tC$G * tC$I
+  tC$T <- tC$T * tC$I
+  C <- t(tC[,-5])
+  return(C)
+}
+
+
 # SANDBOX FUNCTIONS -----------------------------------------------------------
 plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pwm, icm, bsgenome, min.score){
   # Wrapper funtion: make a cowplo t combined version for single SNPs of interest

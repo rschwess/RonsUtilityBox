@@ -41,6 +41,8 @@ parser.add_argument('--seed', dest='seed', type=int, default=1234,
     help='Random seed for sampling.')
 parser.add_argument('--integer_label', dest='integer_label', type=bool, default=False,
     help='Set to True if label should be treated and sorted as an integer.')
+parser.add_argument('--trim_seq', dest='trim_seq', type=int, default=0,
+    help='Number of bp to rim the sequence from both ends (default 0).')
 
 # Parse arguments
 args = parser.parse_args()
@@ -90,6 +92,9 @@ with open(args.in_file, "r") as f:
         # get first sequence to estimate length and format
         if i == 0:
             temp_seq = l[4]
+            # trim if desired
+            if args.trim_seq > 0:
+               temp_seq = temp_seq[args.trim_seq:-args.trim_seq]
             temp_seq = get_hot_coded_seq(temp_seq)
 
 # Get all lables and sort and assign them to binary labels ---------------------
@@ -204,6 +209,8 @@ with open(args.in_file, "r") as f:
         l = l.split("\t")
         # get sequence
         seq = l[4]
+        if args.trim_seq > 0:
+           seq = seq[args.trim_seq:-args.trim_seq]
         # get first sequence length
         if i == 0:
             seq_length = len(seq)

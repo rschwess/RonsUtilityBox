@@ -2,11 +2,15 @@
 Convert the raw sequence and the lables to hdf5 data/arrays for faster batch reading.
 Split data into training, test and validation set. Save training and test set in same file.
 Will store a .h5 file with the labels and sequences and a coord file per test/valid and train set
+ADAPTED for bins within classes:
+    Each class will have multiple bins (as specified) --> for bin classification instead of regression
+    The script will split each class into X bin_subclasses and attribute value
 """
 # from __future__ import absolute_import
 # from __future__ import division
 # from __future__ import print_function
 
+import sys
 import numpy as np
 import h5py
 import argparse
@@ -43,7 +47,8 @@ parser.add_argument('--integer_label', dest='integer_label', type=bool, default=
     help='Set to True if label should be treated and sorted as an integer.')
 parser.add_argument('--trim_seq', dest='trim_seq', type=int, default=0,
     help='Number of bp to rim the sequence from both ends (default 0).')
-
+parser.add_argument('--class_bins', dest='class_bins', type=int, default=10,
+    help='Number of bins within each class')
 # Parse arguments
 args = parser.parse_args()
 
@@ -110,22 +115,31 @@ unique_labels = unique_labels.astype(str)
 num_ids = len(unique_labels)  # get number of unique ids
 print("\nNumber of distinct labels found: " + str(num_ids))
 print("\nDistinct labels: " + ' '.join(map(str,unique_labels)))
+
+print("\nConverting each class to %s bin_class labels" % args.class_bins)
+print("\nConverting to binary representation:")
+
 # init binary representatons --------------------------------------------------
 # make a look-up dictionary with a binary label per id
 bin_look_up = {}
 for i in range(num_ids):
-    bin_look_up[unique_labels[i]] = np.zeros((num_ids), dtype=np.int)  # just changed that
-    bin_look_up[unique_labels[i]][i] = 1
-# print a table with the intial labels for future reference
-print("\nConverting to binary representation:")
-for i in range(num_ids):
-    print(unique_labels[i] + " -->\t" + ','.join(map(str, bin_look_up[unique_labels[i]])))
+    for j in range(args.class_bins):
+        tmp_bin_key = str(unique_labels[i]) + "_" + str(j)
+        bin_look_up[tmp_bin_key] = np.zeros((num_ids*args.class_bins), dtype=np.int)  # just changed that
+        bin_look_up[tmp_bin_key][i + j + i * args.class_bins] = 1
+        # print a table with the intial labels for future reference
+        print(tmp_bin_key + " -->\t" + ','.join(map(str, bin_look_up[tmp_bin_key])))
+
 # Go through labels per seq and sum up a binary representing all active IDs ----
 label_bin = np.zeros((len(label), num_ids),  dtype=np.int)
 for j in range(len(label)):
     l = label[j].split(",") # split by commat
     for i in range(len(l)):
         label_bin[j,] = label_bin[j,] + bin_look_up[l[i]]
+
+# TODO Stop here while developing
+sys.exit()
+
 
 # Sample Test/ Validation and Training set according to selected mode -----------
 input_rows = np.array(range(len(chroms)))  # make an array of input rows to sample from once

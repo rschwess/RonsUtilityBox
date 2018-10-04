@@ -10,6 +10,7 @@ Will store a .h5 file with the labels and sequences and a coord file per test/va
 import numpy as np
 import h5py
 import argparse
+import sys
 from operator import itemgetter
 
 # Define arguments -------------------------------------------------------------
@@ -39,13 +40,19 @@ parser.add_argument('--save_prefix', dest='save_prefix', default='./data_set',
     help='Prefix to store the training/ test and validation sets. Default = ./data_set')
 parser.add_argument('--seed', dest='seed', type=int, default=1234,
     help='Random seed for sampling.')
-parser.add_argument('--integer_label', dest='integer_label', type=bool, default=False,
-    help='Set to True if label should be treated and sorted as an integer.')
 parser.add_argument('--trim_seq', dest='trim_seq', type=int, default=0,
     help='Number of bp to rim the sequence from both ends (default 0).')
+parser.add_argument('--num_classes', dest='num_classes', type=int, default=936,
+    help='Specify number of classes.')
+parser.add_argument('--store_bool', dest='store_bool', type=bool, default=False,
+    help='Indicate if to store the 1-hot encoded sequence and labels as bool dtype (convert in train script etc.).')
 
 # Parse arguments
 args = parser.parse_args()
+
+
+if args.store_bool:
+    print("Stoing as boolean ...")
 
 # Helper get hotcoded sequence
 def get_hot_coded_seq(sequence):
@@ -67,10 +74,41 @@ def get_hot_coded_seq(sequence):
 
 print("\n# === Creating a Training, Test and Validation Set from provided input === #")
 
-# Sed seed for random sampling -------------------------------------------------
+# Set seed for random sampling -------------------------------------------------
 np.random.seed(args.seed)
 
+# init binary representatons --------------------------------------------------
+# Inititialize Classes strucutre to store
+if args.num_classes < 2:
+    sys.exit("No distinct classes specified: %s !" % args.num_classes)
+num_ids = args.num_classes  # get number of unique ids
+print("\nNumber of distinct labels: " + str(num_ids))
+# make a look-up dictionary with a binary label per id
+bin_look_up = {}
+for i in range(num_ids):
+    if args.store_bool:
+        bin_look_up[i] = np.zeros((num_ids), dtype=np.bool)
+        bin_look_up[i][i] = True
+    else:
+        bin_look_up[i] = np.zeros((num_ids), dtype=np.uint8)
+        bin_look_up[i][i] = 1
+
+# test print some bin_look_up_lines
+print("Test Print first bin_look_up lines:")
+print(bin_look_up[0][0:6])
+print(bin_look_up[1][0:6])
+print(bin_look_up[2][0:6])
+print(bin_look_up[3][0:6])
+print(bin_look_up[4][0:6])
+print(bin_look_up[5][0:6])
+
 # Read in data -----------------------------------------------------------------
+# init single empty binary label array for access later
+if args.store_bool:
+    label_bin_init = np.zeros(num_ids,  dtype=np.bool)
+else:
+    label_bin_init = np.zeros(num_ids,  dtype=np.uint8)
+
 print("\nReading lines ...")
 
 # read data in, split into vectors
@@ -79,16 +117,12 @@ with open(args.in_file, "r") as f:
     start = []
     stop = []
     label = []
-    label_tmp = []
-    # seq = []
     for i,l in enumerate(f):
         l = l.rstrip()
         l = l.split("\t")
         chroms.append(l[0])
         start.append(l[1])
         stop.append(l[2])
-        label.append(l[3])
-        label_tmp.append(l[3].split(","))
         # get first sequence to estimate length and format
         if i == 0:
             temp_seq = l[4]
@@ -96,36 +130,6 @@ with open(args.in_file, "r") as f:
             if args.trim_seq > 0:
                temp_seq = temp_seq[args.trim_seq:-args.trim_seq]
             temp_seq = get_hot_coded_seq(temp_seq)
-
-# Get all lables and sort and assign them to binary labels ---------------------
-label_tmp = [item for sublist in label_tmp for item in sublist]
-if args.integer_label == True:
-    label_tmp = np.array(label_tmp, dtype=int)
-else:
-    label_tmp = np.array(label_tmp, dtype=str)
-unique_labels = np.unique(label_tmp)
-unique_labels = unique_labels.astype(int)
-unique_labels = np.sort(unique_labels)  # sort numeric
-unique_labels = unique_labels.astype(str)
-num_ids = len(unique_labels)  # get number of unique ids
-print("\nNumber of distinct labels found: " + str(num_ids))
-print("\nDistinct labels: " + ' '.join(map(str,unique_labels)))
-# init binary representatons --------------------------------------------------
-# make a look-up dictionary with a binary label per id
-bin_look_up = {}
-for i in range(num_ids):
-    bin_look_up[unique_labels[i]] = np.zeros((num_ids), dtype=np.int)  # just changed that
-    bin_look_up[unique_labels[i]][i] = 1
-# print a table with the intial labels for future reference
-print("\nConverting to binary representation:")
-for i in range(num_ids):
-    print(unique_labels[i] + " -->\t" + ','.join(map(str, bin_look_up[unique_labels[i]])))
-# Go through labels per seq and sum up a binary representing all active IDs ----
-label_bin = np.zeros((len(label), num_ids),  dtype=np.int)
-for j in range(len(label)):
-    l = label[j].split(",") # split by commat
-    for i in range(len(l)):
-        label_bin[j,] = label_bin[j,] + bin_look_up[l[i]]
 
 # Sample Test/ Validation and Training set according to selected mode -----------
 input_rows = np.array(range(len(chroms)))  # make an array of input rows to sample from once
@@ -167,7 +171,6 @@ elif args.split_mode == 'chr':
     test_rows = input_rows[test_rows,]
     valid_rows = input_rows[valid_rows,]
     # print(test_rows)
-
 print("\nSampled into sets ...")
 
 # write training/test/validation set coords ------------------------------------
@@ -186,16 +189,27 @@ for tr in valid_rows:
 print("\nInitializing hdf5 Storage Files ...")
 # and already store labels
 train_h5f = h5py.File(args.save_prefix + "_training_data.h5", 'w')
-set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]) , dtype='i')
-train_h5f.create_dataset('training_labels', data=label_bin[training_rows,])
-set_test_seq = train_h5f.create_dataset('test_seqs', (test_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
-train_h5f.create_dataset('test_labels', data=label_bin[test_rows,])
+if args.store_bool:
+    set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]) , dtype='b')
+    set_test_seq = train_h5f.create_dataset('test_seqs', (test_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='b')
+    set_train_label = train_h5f.create_dataset('training_labels', (training_rows.shape[0], num_ids), dtype='b')
+    set_test_label = train_h5f.create_dataset('test_labels', (test_rows.shape[0], num_ids), dtype='b')
+else:
+    set_train_seq = train_h5f.create_dataset('training_seqs', (training_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]) , dtype='ui8')
+    set_test_seq = train_h5f.create_dataset('test_seqs', (test_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='ui8')
+    set_train_label = train_h5f.create_dataset('train_labels', (training_rows.shape[0], num_ids), dtype='ui8')
+    set_test_label = train_h5f.create_dataset('test_labels', (test_rows.shape[0], num_ids), dtype='ui8')
+
 # Validation
 valid_h5f = h5py.File(args.save_prefix + "_validation_data.h5", 'w')
-set_valid_seq = valid_h5f.create_dataset('validation_seqs', (valid_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='i')
-valid_h5f.create_dataset('validation_labels', data=label_bin[valid_rows,])
+if args.store_bool:
+    set_valid_seq = valid_h5f.create_dataset('validation_seqs', (valid_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='b')
+    set_valid_label = valid_h5f.create_dataset('validation_labels', (valid_rows.shape[0], num_ids), dtype='b')
+else:
+    set_valid_seq = valid_h5f.create_dataset('validation_seqs', (valid_rows.shape[0], temp_seq.shape[0], temp_seq.shape[1]), dtype='ui8')
+    set_valid_label = valid_h5f.create_dataset('validation_labels', (valid_rows.shape[0], num_ids), dtype='ui8')
 
-# TODO read without converting the sequence -- determine training and test rows etc than read the input file again and convert and assign the labels and sequence and directly write to  output file without storing everything
+# Last run through file get, convert and store sequence
 print("\nRunning through raw file again, converting sequences and store in sets ...")
 with open(args.in_file, "r") as f:
     seq = []
@@ -207,6 +221,16 @@ with open(args.in_file, "r") as f:
     for i,l in enumerate(f):
         l = l.rstrip()
         l = l.split("\t")
+
+        # get label and sum up binary array to represent all classes
+        label = l[3].split(",")  # split by commata
+        label = np.array(label, dtype='i')
+
+        # Sum up classes into binary representation
+        label_bin = label_bin_init
+        for j in range(len(label)):
+            label_bin = label_bin + bin_look_up[label[j]]
+
         # get sequence
         seq = l[4]
         if args.trim_seq > 0:
@@ -222,20 +246,26 @@ with open(args.in_file, "r") as f:
             continue
         # convert to one hot coded
         seq = get_hot_coded_seq(seq)
+
         # match and write to respective hdf5 file
+        # also store label
         if i in test_rows[:]:
             set_test_seq[test_i,] = seq
+            set_test_label[test_i,] = label_bin
             # test_rows = np.delete(test_rows, test_i)
             test_i += 1
         elif i in valid_rows[:]:
             set_valid_seq[valid_i,] = seq
+            set_valid_label[valid_i,] = label_bin
             # valid_rows = np.delete(valid_rows, valid_i)
             valid_i += 1
         else:
             set_train_seq[train_i,] = seq
+            set_train_label[train_i,] = label_bin
             train_i += 1
         if i % 10000 == 0:
             print('Written lines ... %s' % (i))
+
     print("Skipped %s elements with sequence length != %s" % (skip_count, seq_length))
 
 # Close
