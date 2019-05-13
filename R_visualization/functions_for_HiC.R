@@ -323,14 +323,21 @@ MakeTriangleMatrix <- function(df){
   
 }
 
-PruneHicproMatrix <- function(hics, chrs, starts, ends){
+PruneHicproMatrix <- function(hics, chrs, starts = 0, ends = 0){
   # Function to prune a matrix to zoom into a region of interest
   # Take a list object as imported with ImportHicproMatrix
   # and prune it to include only interactions between the genomix coordinates chosen
   
-  # get bins in ROI
-  hics$coords <- hics$coords %>%
-    filter(chr == chrs & center >= starts & center <= ends)
+  if(starts == 0 & ends == 0)
+    # only chromosome
+    hics$coords <- hics$coords %>%
+      filter(chr == chrs)
+  else{
+    # get bins in ROI
+    hics$coords <- hics$coords %>%
+      filter(chr == chrs & center >= starts & center <= ends)
+    
+  }
   
   # get interactions in ROI
   hics$matrix.df <- hics$matrix.df[((hics$matrix.df$y.id %in% hics$coords$id) & (hics$matrix.df$x.id %in% hics$coords$id)),]
@@ -591,6 +598,23 @@ leftHandNotate <- function(matrix){
   matrix$y <- matrix$y - 500
   return(matrix)
 }
+
+trimHicRange <- function(hic.obj, range=1000000){
+  # Function to trim a hic object to only maintain interactions with a maximum interaction range
+  hic.obj$matrix.df <- hic.obj$matrix.df[abs(hic.obj$matrix.df$x - hic.obj$matrix.df$y) <= range,]
+  return(hic.obj)
+}
+
+trimHicCoords<- function(hic.obj, start=1000000, end=2000000){
+  # Function to trim a hic object to only maintain interactions within start and end coordinate
+  hic.obj$matrix.df <- hic.obj$matrix.df[hic.obj$matrix.df$x >= start,]
+  hic.obj$matrix.df <- hic.obj$matrix.df[hic.obj$matrix.df$x <= end,]
+  hic.obj$matrix.df <- hic.obj$matrix.df[hic.obj$matrix.df$y >= start,]
+  hic.obj$matrix.df <- hic.obj$matrix.df[hic.obj$matrix.df$y <= end,]
+  
+  return(hic.obj)
+}
+
 
 # LEGACY ==========================================
 PlotSquareMatrixOld <- function(

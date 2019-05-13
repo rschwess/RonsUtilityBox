@@ -17,6 +17,30 @@ cpal <- rev(brewer.pal(3, "Set1")[1:2])
 
 
 # Helper Functions ============================================================
+# Helpe for rounding arbitarily
+custom_round <- function(x, base) {
+  round(x/base)*base
+}
+custom_floor <- function(x, base) {
+  r <- round(x/base)*base
+  if(r > x){
+    r <- r - base
+  }
+  return(r)
+}
+custom_ceil <- function(x, base) {
+  r <- round(x/base)*base
+  if(r < x){
+    r <- r + base
+  }
+  return(r)
+}
+
+vec_custom_floor <- Vectorize(custom_floor)
+vec_custom_ceil <- Vectorize(custom_ceil)
+vec_custom_round <- Vectorize(custom_round)
+
+
 # copied from http://crazyhottommy.blogspot.co.uk/2016/02/compute-averagessums-on-granges-or.html
 # need to validedte integrity
 binnedSum <- function(bins, numvar, mcolname){
@@ -343,3 +367,203 @@ predictTripleDistanceDecay<- function(
 }
   
 # roundTo <- Vectorize(roundTo)  # vectorize it
+
+
+
+# Fit three component distal decay function SINGLE CONDITION -----------------------------------
+fitTripleDistanceDecaySingleCondition <- function(
+  data,  # melted datatframe with mean distance pe, value, .. columns,
+  bin_size = 1000,
+  close.threshold = 2500,
+  near.threshold = 150000,
+  intermediate.threshold = 2500000,
+  far.threshold = 15000000,
+  colours = rev(brewer.pal(3, "Set1")[1:2])
+){
+  # Fitting a triple component log - log linear decay function
+  # Returns three fit formula components, distance thresholds for applying and fit plots
+  
+  # 1) Bin Distances (rounded to 500 bp) ---------------------------
+  print("Rounding Bins ...")
+  data <- data %>% mutate(bin.distance = vec_custom_floor(distance, bin.size) + bin.size/2)
+  
+  # 2) ### NEAR FIT ### --------------------------------------------
+  print("Fitting Near Cis ...")
+  min.dist.for.fit <- close.threshold
+  max.dist.for.fit <- near.threshold
+  # summarize per bin and plot
+  data.mean <- data %>%
+    filter(value != 0) %>%
+    filter(bin.distance >= min.dist.for.fit & bin.distance <= max.dist.for.fit) %>%
+    group_by(bin.distance) %>%
+    summarise(value = mean(value))
+  
+  # fit linear model to log values
+  ll.model <- lm(log(data.mean$value) ~ log(data.mean$bin.distance))
+  ll.intercept <- ll.model$coefficients[1]
+  ll.slope <- ll.model$coefficients[2]
+  
+  # get fitted values for curve
+  data.fit <- data.mean %>% 
+    mutate(log.distance = log(bin.distance)) %>%
+    mutate(ll.fit = exp(ll.slope * log.distance + ll.intercept))
+  
+  # Make Plot with fit curve
+  p.value <- ggplot(data.fit, aes(x = bin.distance, y = value)) + geom_point() +
+    geom_line(aes(y = ll.fit, colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) + 
+    ggtitle("Interaction Value ~ Distance (log-log linear fit)") +
+    science_theme
+  p.loglog <- ggplot(data.fit, aes(x = log(bin.distance), y = log(value))) + geom_point() + 
+    geom_line(aes(y = log(ll.fit), colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) +
+    ggtitle("Linear Log-Log relation and Fit") + 
+    science_theme
+  p <- plot_grid(p.value, p.loglog, nrow=1, rel_widths = c(2,1.5))
+  # save near cis objects 
+  plot.fit.near <- p
+  ll.model.slope.near <- ll.slope
+  ll.model.intercept.near <- ll.intercept
+  
+  # 3) ### INTERMEDIATE FIT ### ---------------------------------
+  print("Fitting Inter Cis ...")
+  min.dist.for.fit <- near.threshold
+  max.dist.for.fit <- intermediate.threshold
+  # summarize per bin and plot
+  data.mean <- data %>%
+    filter(value != 0) %>%
+    filter(bin.distance >= min.dist.for.fit & bin.distance <= max.dist.for.fit) %>%
+    group_by(bin.distance) %>%
+    summarise(value = mean(value))
+  
+  # fit linear model to log values
+  ll.model <- lm(log(data.mean$value) ~ log(data.mean$bin.distance))
+  ll.intercept <- ll.model$coefficients[1]
+  ll.slope <- ll.model$coefficients[2]
+  # get fitted values for curve
+  data.fit <- data.mean %>% 
+    mutate(log.distance = log(bin.distance)) %>%
+    mutate(ll.fit = exp(ll.slope * log.distance + ll.intercept))
+  # Make Plot with fit curve
+  p.value <- ggplot(data.fit, aes(x = bin.distance, y = value)) + geom_point() +
+    geom_line(aes(y = ll.fit, colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) + 
+    ggtitle("Interaction Value ~ Distance (log-log linear fit)") +
+    science_theme
+  p.loglog <- ggplot(data.fit, aes(x = log(bin.distance), y = log(value))) + geom_point() + 
+    geom_line(aes(y = log(ll.fit), colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) +
+    ggtitle("Linear Log-Log relation and Fit") + 
+    science_theme
+  p <- plot_grid(p.value, p.loglog, nrow=1, rel_widths = c(2,1.5))
+  # save intermediate cis objects 
+  plot.fit.intermediate <- p
+  ll.model.slope.intermediate <- ll.slope
+  ll.model.intercept.intermediate <- ll.intercept
+  
+  # 4) ### FAR FIT ### --------------------------
+  print("Fitting Far Cis ...")
+  min.dist.for.fit <- intermediate.threshold
+  max.dist.for.fit <- far.threshold
+  # summarize per bin and plot
+  data.mean <- data %>%
+    filter(value != 0) %>%
+    filter(bin.distance >= min.dist.for.fit & bin.distance <= max.dist.for.fit) %>%
+    group_by(bin.distance) %>%
+    summarise(value = mean(value))
+  # fit linear model to log values
+  ll.model <- lm(log(data.mean$value) ~ log(data.mean$bin.distance))
+  ll.intercept <- ll.model$coefficients[1]
+  ll.slope <- ll.model$coefficients[2]
+  
+  # get fitted values for curve
+  data.fit <- data.mean %>% 
+    mutate(log.distance = log(bin.distance)) %>%
+    mutate(ll.fit = exp(ll.slope * log.distance + ll.intercept))
+  
+  # Make Plot with fit curve
+  p.value <- ggplot(data.fit, aes(x = bin.distance, y = value)) + geom_point() +
+    geom_line(aes(y = ll.fit, colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) + 
+    ggtitle("Interaction Value ~ Distance (log-log linear fit)") +
+    science_theme
+  p.loglog <- ggplot(data.fit, aes(x = log(bin.distance), y = log(value))) + geom_point() + 
+    geom_line(aes(y = log(ll.fit), colour=cond), size=1, col = colours[1]) + 
+    scale_color_manual(values = cpal) +
+    ggtitle("Linear Log-Log relation and Fit") + 
+    science_theme
+  p <- plot_grid(p.value, p.loglog, nrow=1, rel_widths = c(2,1.5))
+  # save far cis objects 
+  plot.fit.far <- p
+  ll.model.slope.far <- ll.slope
+  ll.model.intercept.far <- ll.intercept
+  
+  # 5) Make overall log log cis plot --------------------------
+  print("Wrapping Up ...")
+  data.mean <- data %>%
+    filter(value != 0) %>%
+    filter(bin.distance >= close.threshold) %>%
+    group_by(bin.distance) %>%
+    summarise(value = mean(value))
+  plot.loglog_all.cis <- ggplot(data.mean, aes(x = log(bin.distance), y = log(value))) +
+    geom_point() +
+    geom_vline(xintercept = c(log(near.threshold), log(intermediate.threshold), log(far.threshold)), linetype = "dotted") +
+    science_theme
+  
+  # 6) Assemble Return --------------------------
+  out <- list(
+    "near" = list(
+      "plot.fit" = plot.fit.near, 
+      "slope" = ll.model.slope.near,
+      "intercept" = ll.model.intercept.near
+    ),
+    "inter" = list(
+      "plot.fit" = plot.fit.intermediate, 
+      "slope" = ll.model.slope.intermediate,
+      "intercept" = ll.model.intercept.intermediate
+    ),
+    "far" = list(
+      "plot.fit" = plot.fit.far, 
+      "slope" = ll.model.slope.far,
+      "intercept" = ll.model.intercept.far
+    ),
+    "plot.all" = plot.loglog_all.cis
+  )
+  return(out)
+  
+  
+}
+
+
+
+
+# Predict distance function with three component distal decay function -----------------------------------
+predictTripleDistanceDecaySingleCondition<- function(
+  data,  # melted datatframe with cond, distance, value, .. columns,
+  ll,  # log log triple component fit model
+  newcol = "f.d", # name of columns to add 
+  close.threshold = 2500,
+  near.threshold = 150000,
+  intermediate.threshold = 2500000,
+  far.threshold = 20000000
+){
+  
+  # add new data column
+  data <- data %>% mutate(newcol = 0)
+  
+  # predict separately for conditions
+  # predict separately for near, inter and far distances
+  data[(data$distance <= near.threshold), "newcol"] <- 
+    exp(ll$near$slope * log(data[(data$distance <= near.threshold), "distance"]) + ll$near$intercept)
+  data[(data$distance > near.threshold & data$distance <= intermediate.threshold), "newcol"] <- 
+    exp(ll$inter$slope * log(data[(data$distance > near.threshold & data$distance <= intermediate.threshold), "distance"]) + ll$inter$intercept)
+  data[(data$distance > intermediate.threshold), "newcol"] <- 
+    exp(ll$far$slope * log(data[(data$distance > intermediate.threshold), "distance"]) + ll$far$intercept)
+  
+  # rename column
+  names(data)[ncol(data)] <- newcol
+  
+  # return data
+  return(data)
+  
+}

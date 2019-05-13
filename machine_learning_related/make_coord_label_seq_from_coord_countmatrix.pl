@@ -20,8 +20,10 @@ if($genome eq "hg18"){
 	$genome_file = '/databank/igenomes/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa';
 }elsif($genome eq "mm9"){
 	$genome_file = '/databank/igenomes/Mus_musculus/UCSC/mm9/Sequence/WholeGenomeFasta/genome.fa';
+}elsif($genome eq "mm10"){
+        $genome_file = '/databank/igenomes/Mus_musculus/UCSC/mm10/Sequence/WholeGenomeFasta/genome.fa';
 }else{
-	print "Please select an implemented reference genome, hg19, hg18, mm9 !\n";
+	print "Please select an implemented reference genome, hg19, hg18, mm9, mm10 !\n";
 	exit 2;
 }
 

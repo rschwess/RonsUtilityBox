@@ -294,6 +294,50 @@ weightsToIcm <- function(W, base = 1000){
   return(C)
 }
 
+plotBaseXScore <- function(seq = c("A", "C", "G", "T"), pos = c(1:4), score = c(1, 0.5, 1, 0.5), label = "your score could be here"){
+  # Plot Bases x an arbitrary Score along positions
+  # Arguments:
+  #   seq:  sequence
+  #   pos:  positions mathcing sequence
+  #   score:  scores to scale
+  #   label for the plot y axis 
+  # Returns: Plot (ggplot2 object)
+  # Note current maximum is ~ 200 bps
+  
+  # CHeck if length al match
+  length.score <- length(score)
+  length.pos <- length(pos)
+  length.seq <- length(seq)
+  if(length(unique(c(length.score, length.pos, length.seq))) > 1){
+    print("Length of arguments doesn't match! Returning Embarassing Character ...")
+    return("moep")
+  }
+  
+  # todo check for bases
+  
+  # lay plot base
+  p <- ggplot(data.frame(x=c(min(pos), max(pos)), y=c(0, max(score))), aes(x=x, y=y)) + 
+    labs(x="pos", y=label) + 
+    # theme_bw() + 
+    motif_theme 
+  
+  l <- list()
+  
+  # add bases  to list
+  for(i in c(1:length.seq)){
+    l <- c(l, plotBitBase(seq[i], xintercept = pos[i]-.5, scale = score[i]))  
+  }
+  
+  # modify plot  
+  p <- p + l
+  
+  
+  return(p)
+}
+
+
+
+
 
 # SANDBOX FUNCTIONS -----------------------------------------------------------
 plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pwm, icm, bsgenome, min.score){
@@ -324,7 +368,7 @@ plotMotifWithVarMatches <- function(chr, pos, id, ref.base, alt.base, extend, pw
   position.var <- c()
   
   # 0) make the icm plot
-  icm.plot <- plotICM(icm.matrix) # plot icm as part of later plots
+  icm.plot <- plotICM(icm) # plot icm as part of later plots
   
   # 1) get longer surrounding sequence
   ref.seq <- as.character(getSeq(bsgenome, as.character(chr), start=as.numeric(pos)-extend, end=as.numeric(pos)+extend))
@@ -464,3 +508,6 @@ plotWeights <- function(w){
   }
   return(p)
 }
+
+
+
